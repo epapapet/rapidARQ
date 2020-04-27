@@ -18,13 +18,11 @@ set protocolAcker "ARQAcker"
 set protocolNAcker "ARQNacker"
 
 
- if {$protocol == "Tetrys"} { 
+if {$protocol == "Tetrys"} { 
      set protocolTx "TetrysTx"
      set protocolAcker "TetrysAcker"
      set protocolNAcker "TetrysNacker"
-} 
-
-if {$protocol == "Caterpillar"} {
+} elseif {$protocol == "Caterpillar"} {
      set protocolTx "CaterpillarTx"
      set protocolAcker "CaterpillarAcker"
      set protocolNAcker "CaterpillarNacker"
@@ -45,12 +43,9 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth limit vgseed ackerr
     $self instvar tARQ_ acker_ nacker_
     global protocolTx protocolAcker protocolNAcker
 
-    set attachpart "attach-"
-    set attachTX $attachpart$protocolTx
-    puts "$attachTX"
-    set setuppart "setup-"
-    set setupAcker $setuppart$protocolAcker
-    set setupNAcker $setuppart$protocolNAcker
+    append attachTX "attach-" $protocolTx
+    append setupAcker "setup-" $protocolAcker
+    append setupNAcker "setup-" $protocolNAcker
  
     set tARQ_ [new $protocolTx]
     set acker_ [new $protocolAcker]
