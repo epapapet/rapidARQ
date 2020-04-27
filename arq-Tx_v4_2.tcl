@@ -1,24 +1,7 @@
-#       http://ns2ultimate.tumblr.com/post/1539258323/arq-module-program-update
-
-
-ARQTx set retry_limit_ 100
-ARQTx set rate_k 1000
-ARQTx set coding_depth 0
-ARQTx set lnk_delay_ 30ms
-ARQTx set lnk_bw_ 10M
-ARQTx set app_pkt_Size_ 1000
-ARQTx set debug_ NULL
-
-ARQAcker set debug_ NULL
-
-ARQNacker set debug_ NULL
-
-
-# ==== arq.tcl ====
-
-# usage: ns <scriptfile> <bandwidth> <propagation_delay> <window_size> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <seed>
+# usage: ns <scriptfile> <bandwidth> <propagation_delay> <protocol> <window_size> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <seed>
 # <bandwidth> : in bps, example: set to 5Mbps -> 5M or 5000000
 # <propagation_delay> : in secs, example: set to 30ms -> 30ms or 0.03
+# <protocol> : the protocol to be used (either Tetrys, Caterpillar and our protocol in any other case)
 # <window_size> : aqr window size in pkts
 # <pkt_size> : the size of pkts created by the app in bytes
 # <err_rate> : the error rate in the forward channel (error rate for frames)
@@ -28,15 +11,52 @@ ARQNacker set debug_ NULL
 # <coding_depth> : the number of coding cycles used to create a coded pkt
 # <seed> : seed used to produce randomness
 
+set protocol [lindex $argv 2]
+
+set protocolTx "ARQTx"
+set protocolAcker "ARQAcker"
+set protocolNAcker "ARQNacker"
+
+
+ if {$protocol == "Tetrys"} { 
+     set protocolTx "TetrysTx"
+     set protocolAcker "TetrysAcker"
+     set protocolNAcker "TetrysNacker"
+} 
+
+if {$protocol == "Caterpillar"} {
+     set protocolTx "CaterpillarTx"
+     set protocolAcker "CaterpillarAcker"
+     set protocolNAcker "CaterpillarNacker"
+} 
+
+$protocolTx set retry_limit_ 100
+$protocolTx set rate_k 1000
+$protocolTx set coding_depth 0
+$protocolTx set lnk_delay_ 30ms
+$protocolTx set lnk_bw_ 10M
+$protocolTx set app_pkt_Size_ 1000
+$protocolTx set debug_ NULL
+$protocolAcker set debug_ NULL
+$protocolNAcker set debug_ NULL
+
 SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth limit vgseed ackerr } {
     $self instvar link_ link_errmodule_ queue_ drophead_ head_
     $self instvar tARQ_ acker_ nacker_
- 
-    set tARQ_ [new ARQTx]
-    set acker_ [new ARQAcker]
-    set nacker_ [new ARQNacker]
+    global protocolTx protocolAcker protocolNAcker
 
-    #ARQTx set up
+    set attachpart "attach-"
+    set attachTX $attachpart$protocolTx
+    puts "$attachTX"
+    set setuppart "setup-"
+    set setupAcker $setuppart$protocolAcker
+    set setupNAcker $setuppart$protocolNAcker
+ 
+    set tARQ_ [new $protocolTx]
+    set acker_ [new $protocolAcker]
+    set nacker_ [new $protocolNAcker]
+
+    #Tx set up
     $tARQ_ setup-wnd $wndsize
     $tARQ_ set retry_limit_ $limit
 	$tARQ_ set rate_k $ratekk
@@ -46,9 +66,9 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth limit vgseed ackerr
     $tARQ_ set app_pkt_Size_ [expr {8*$apktsz}]
     
 
-    #ARQAcker set up
-    $acker_ attach-ARQTx $tARQ_
-    $acker_ setup-ARQNacker $nacker_
+    #Acker set up
+    $acker_ $attachTX $tARQ_
+    $acker_ $setupNAcker $nacker_
     $acker_ setup-wnd $wndsize
     $acker_ update-delays
     
@@ -60,13 +80,13 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth limit vgseed ackerr
     $acker_ set-err $ackerr    
 
 
-    #ARQNacker set up
-    $nacker_ attach-ARQTx $tARQ_
-	$nacker_ setup-ARQAcker $acker_
+    #Nacker set up
+    $nacker_ $attachTX $tARQ_
+	$nacker_ $setupAcker $acker_
     $nacker_ update-delays
 
     
-    #Connections between ARQTx, ARQAcker, ARQNacker, queue, drop-target and ARQAcker target
+    #Connections between Tx, Acker, Nacker, queue, drop-target and Acker target
     $tARQ_ target [$queue_ target]
     $queue_ target $tARQ_
     $acker_ target [$link_errmodule_ target]
@@ -102,16 +122,16 @@ $ns duplex-link $n2 $n3 $link_bwd $link_delay DropTail
 $ns duplex-link $n1 $n3 $link_bwd $link_delay DropTail
 
 #=== Create error and ARQ module ===
-set window [lindex $argv 2]
+set window [lindex $argv 3]
 set em [new ErrorModel]
-$em set rate_ [lindex $argv 4]
+$em set rate_ [lindex $argv 5]
 
 $em set enable_ 1
 $em unit pkt
 $em set bandwidth_ $link_bwd
 
 set vagrng [new RNG]
-$vagrng seed [lindex $argv 9]
+$vagrng seed [lindex $argv 10]
 set vagranvar [new RandomVariable/Uniform]
 $vagranvar use-rng $vagrng
 
@@ -120,11 +140,11 @@ $em drop-target [new Agent/Null]
 
 $ns link-lossmodel $em $n1 $n3
 
-set num_rtx [lindex $argv 6]
-set rate_k [lindex $argv 7]
-set cod_dpth [lindex $argv 8]
-set apppktSize [lindex $argv 3]
-set receiver [$ns link-arq $window $apppktSize $rate_k $cod_dpth $num_rtx $n1 $n3 [lindex $argv 9] [lindex $argv 5]]
+set num_rtx [lindex $argv 7]
+set rate_k [lindex $argv 8]
+set cod_dpth [lindex $argv 9]
+set apppktSize [lindex $argv 4]
+set receiver [$ns link-arq $window $apppktSize $rate_k $cod_dpth $num_rtx $n1 $n3 [lindex $argv 10] [lindex $argv 6]]
 
 #=== Set up a UDP connection ===
 set udp [new Agent/UDP]
