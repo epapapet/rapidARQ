@@ -8,5 +8,7 @@ The folder contains:
 * A bunch of \*.tcl files used for running example simulations. The available arguments can be found within the tcl file.
 
 Currently the following examples for running a simulation can be used:
-* ./ns arq/arq-Tx_v4_1.tcl 5M 30ms 20 1000 0.2 0.2 3 5 5 6
-* ./ns arq/arq-Tx_v4_2.tcl 5M 30ms 20 1000 0.2 0.2 3 5 5 6
+* ./ns arq/arq-Tx_v4_1.tcl 5M 30ms \<protocol\> 20 1000 0.2 0.2 3 5 5 6
+* ./ns arq/arq-Tx_v4_2.tcl 5M 30ms \<protocol\> 20 1000 0.2 0.2 3 5 5 6
+
+where \<protocol\> is either Tetrys or Caterpillar while any other option will trigger our new protocol.
