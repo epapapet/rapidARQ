@@ -637,7 +637,7 @@ void TetrysAcker::print_stats()
 	printf("Finish time (sec):\t\t%f\n", finish_time);
 
 	printf("Total number of delivered pkts:\t%d\n", delivered_pkts);
-	printf("Delivered data (in bytes):\t%d\n", delivered_data);
+	printf("Delivered data (in mega bytes):\t%.3f\n", delivered_data/1048576);
 	double throughput = (delivered_data * 8) / (double) (finish_time - arq_tx_->get_start_time());
 	printf("Total throughput (Mbps):\t%f\n", throughput * 1.0e-6);
 
@@ -650,7 +650,7 @@ void TetrysAcker::print_stats()
 
 	printf("Number of actual decodings:\t%d\n", num_of_decodings);
 	printf("Average decoding matrix size:\t%f\n", ( (num_of_decodings == 0) ? (0) : ((double) avg_dec_matrix_size / num_of_decodings) ));
-  printf("//------------------------------------------//\n");  
+  printf("//------------------------------------------//\n");
 } //end of print_stats
 
 void TetrysAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that reads a coded packet and update the list with known packets

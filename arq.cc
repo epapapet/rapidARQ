@@ -637,7 +637,7 @@ void ARQAcker::print_stats()
 	printf("Finish time (sec):\t\t%f\n", finish_time);
 
 	printf("Total number of delivered pkts:\t%d\n", delivered_pkts);
-	printf("Delivered data (in bytes):\t%d\n", delivered_data);
+	printf("Delivered data (in mega bytes):\t%.3f\n", delivered_data/1048576);
 	double throughput = (delivered_data * 8) / (double) (finish_time - arq_tx_->get_start_time());
 	printf("Total throughput (Mbps):\t%f\n", throughput * 1.0e-6);
 

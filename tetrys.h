@@ -133,7 +133,7 @@ public:
 	//Statistics
 	double finish_time; //time when the last pkt was delivered to the receiver's upper layer, used to calculate throughput
 	int delivered_pkts; //the total number of pkts delivered to the receiver's upper layer
-	int delivered_data; //the total number of bytes delivered to the receiver's upper layer
+	double delivered_data; //the total number of bytes delivered to the receiver's upper layer
 	double sum_of_delay; //sum of delays for every packet delivered, used to calculate average delay
 	int avg_dec_matrix_size; //the avg size of the decoding matrix when decoding is performed (used to estimate processing overhead)
 	int num_of_decodings; //number of decoding operations
