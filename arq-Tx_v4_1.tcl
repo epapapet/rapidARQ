@@ -1,14 +1,15 @@
-# usage: ns <scriptfile> <bandwidth> <propagation_delay> <protocol> <window_size> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <seed>
+# usage: ns <scriptfile> <bandwidth> <propagation_delay> <protocol> <window_size> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <simulation_time> <seed>
 # <bandwidth> : in bps, example: set to 5Mbps -> 5M or 5000000
 # <propagation_delay> : in secs, example: set to 30ms -> 30ms or 0.03
 # <protocol> : the protocol to be used (either Tetrys, Caterpillar and our protocol in any other case)
 # <window_size> : aqr window size in pkts
-# <pkt_size> : the size of pkts created by the app in bytes
+# <pkt_size> : the size of a TCP segment (not including the TCP and IP headers)
 # <err_rate> : the error rate in the forward channel (error rate for frames)
 # <ack_rate> : the error rate in the return channel (error rate for ACKs)
 # <num_rtx> : the number of retransmissions allowed for a native pkt
 # <rate_k> : the number of native pkts sent before creating a coded pkt (actually define the code rate)
 # <coding_depth> : the number of coding cycles used to create a coded pkt
+# <simulation_time> : the simulation time in secs
 # <seed> : seed used to produce randomness
 
 set protocol [lindex $argv 2]
@@ -131,7 +132,7 @@ $em unit pkt
 $em set bandwidth_ $link_bwd
 
 set vagrng [new RNG]
-$vagrng seed [lindex $argv 10]
+$vagrng seed [lindex $argv 11]
 set vagranvar [new RandomVariable/Uniform]
 $vagranvar use-rng $vagrng
 
@@ -144,7 +145,7 @@ set num_rtx [lindex $argv 7]
 set rate_k [lindex $argv 8]
 set cod_dpth [lindex $argv 9]
 set apppktSize [lindex $argv 4]
-set receiver [$ns link-arq $window $apppktSize $rate_k $cod_dpth $num_rtx $n1 $n3 [lindex $argv 10] [lindex $argv 6]]
+set receiver [$ns link-arq $window $apppktSize $rate_k $cod_dpth $num_rtx $n1 $n3 [lindex $argv 11] [lindex $argv 6]]
 
 #=== Set up a UDP connection ===
 set tcp [new Agent/TCP]
@@ -158,7 +159,8 @@ $ftp attach-agent $tcp
 $ns connect $tcp $sink
 
 $ns at 0.0 "$ftp start"
-$ns at 100.0 show_tcp_seqno
-$ns at 100.0 print_stats
-$ns at 100.1 "exit 0"
+$ns at [lindex $argv 10] "$ftp stop"
+$ns at [expr {[lindex $argv 10] + 0.5}] show_tcp_seqno
+$ns at [expr {[lindex $argv 10] + 0.5}] print_stats
+$ns at [expr {[lindex $argv 10] + 1.0}] "exit 0"
 $ns run
