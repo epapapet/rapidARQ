@@ -52,6 +52,8 @@ ARQTx::ARQTx() : arqh_(*this)
 	bind("rate_k", &rate_k); //the number of native frames before the creation of a coded one
 	coding_depth = 0;
 	bind("coding_depth", &coding_depth); //the number of coding cycles used to create a coded frame
+  coding_wnd = 0;
+  bind("coding_wnd", &coding_wnd); //coding window used for creating coded packets
 	lnk_bw_ = 10000000;
 	bind("lnk_bw_", &lnk_bw_);
 	lnk_delay_ = 0.03;
@@ -84,7 +86,7 @@ int ARQTx::command(int argc, const char*const* argv)
 			pkt_uids = new int[wnd_]; //buffer for storing the uids of pending frames: used only for diagnostic purposes
 			pkt_tx_start = new double[wnd_]; //the start time of a packet's transmission, negative value indicates pkt not sent
 			for(int i=0; i<wnd_; i++){ pkt_buf[i] = NULL; status[i] = IDLE; num_rtxs[i] = 0; pkt_uids[i]=-1; pkt_tx_start[i]=-1;}
-			return(TCL_OK);
+      return(TCL_OK);
 		}
 	} return Connector::command(argc, argv);
 } //end of command
@@ -163,21 +165,23 @@ Packet* ARQTx::create_coded_packet(){ //create a new coded packet with seq nums 
 	hdr_cmn *ch2 = HDR_CMN(cpkt);
 	ch2->opt_num_forwards_ = -1000; //indicates a coded packet
 
-	unsigned char *buffer = new unsigned char[sizeof(int)*(wnd_+1)]; //maximum of wnd_ sequence numbers plus a counter
-	int runner_ = ((last_acked_sq_+1)%sn_cnt)%wnd_;
-	int cnt_pkts = 0;
-	do {
-		if(status[runner_] != DROP){ //We should consider which packets to include in an encoded packet. For example, should we incude RTX or ACKED pkts?
-			hdr_cmn *ch = HDR_CMN(pkt_buf[runner_]);
-			*(buffer+sizeof(int)*(cnt_pkts+1)) =  (ch->opt_num_forwards_ >> 24) & 0xFF;
-			*(buffer+sizeof(int)*(cnt_pkts+1)+1) = (ch->opt_num_forwards_ >> 16) & 0xFF;
-			*(buffer+sizeof(int)*(cnt_pkts+1)+2) = (ch->opt_num_forwards_ >> 8) & 0xFF;
-			*(buffer+sizeof(int)*(cnt_pkts+1)+3) = ch->opt_num_forwards_ & 0xFF;
-			cnt_pkts++;
-		}
-		runner_ = (runner_ + 1)%wnd_;
-	} while (runner_ != (most_recent_sq_%wnd_));
-
+	unsigned char *buffer = new unsigned char[sizeof(int)*(wnd_+1)]; //maximum of wnd sequence numbers plus a counter
+  int step = 1;
+  int runner_ = (((most_recent_sq_-step) + sn_cnt)%sn_cnt)%wnd_;
+  int cnt_pkts = 0;
+  do {
+    if(status[runner_] != DROP){ //We should consider which packets to include in an encoded packet. For example, should we incude RTX or ACKED pkts?
+      hdr_cmn *ch = HDR_CMN(pkt_buf[runner_]);
+      *(buffer+sizeof(int)*(cnt_pkts+1)) =  (ch->opt_num_forwards_ >> 24) & 0xFF;
+      *(buffer+sizeof(int)*(cnt_pkts+1)+1) = (ch->opt_num_forwards_ >> 16) & 0xFF;
+      *(buffer+sizeof(int)*(cnt_pkts+1)+2) = (ch->opt_num_forwards_ >> 8) & 0xFF;
+      *(buffer+sizeof(int)*(cnt_pkts+1)+3) = ch->opt_num_forwards_ & 0xFF;
+      cnt_pkts++;
+    }
+    step += 1;
+    runner_ = (((most_recent_sq_-step) + sn_cnt)%sn_cnt)%wnd_;
+  } while (runner_ != (last_acked_sq_+ sn_cnt)%wnd_ && runner_ != (((most_recent_sq_-1) - coding_wnd + sn_cnt)%sn_cnt)%wnd_);
+  //if coding_wnd=0 then coded packet contains sequence numbers between last_acked_sq_ and most_recent_sq_
 	*(buffer) =  (cnt_pkts >> 24) & 0xFF;
 	*(buffer+1) = (cnt_pkts >> 16) & 0xFF;
 	*(buffer+2) = (cnt_pkts >> 8) & 0xFF;
@@ -401,9 +405,11 @@ int ARQRx::command(int argc, const char*const* argv)
 	Tcl& tcl = Tcl::instance();
 	if (argc == 2) {
 		if (strcmp(argv[1], "update-delays") == 0) {
+      bool delayNack = false; //bool variable that controls the value assigned to timeout_. If false, keep timeout = delay.
 			delay_ = arq_tx_->get_linkdelay();
-			timeout_ = (arq_tx_->get_codingdepth() * (arq_tx_->get_ratek() + 1) * arq_tx_->get_apppktsize())/arq_tx_->get_linkbw() + arq_tx_->get_linkdelay();
-			return(TCL_OK);
+			double nack_delay = (arq_tx_->get_codingdepth() * (arq_tx_->get_ratek() + 1) * arq_tx_->get_apppktsize())/arq_tx_->get_linkbw() + arq_tx_->get_linkdelay();
+      timeout_ = (delayNack == false) ? delay_ : nack_delay;
+      return(TCL_OK);
 		}
 	} else if (argc == 3) {
 		if (strcmp(argv[1], "attach-ARQTx") == 0) {
@@ -512,8 +518,10 @@ void ARQAcker::recv(Packet* p, Handler* h)
 	bool within_fww = ((fw_dis <= wnd_) && (fw_dis > 0)) ? (true) : (false); //bool to indicate whether the new frame is within forward window or not
 	int bw_dis = (most_recent_acked - seq_num + sn_cnt)%sn_cnt; //distance of the most recently acked seq_num from the received seq_num
 	bool within_bww = (bw_dis < wnd_) ? (true) : (false); //bool to indicate whether the new frame is (or not) within the ARQTx's active window as seen by ARQRx (backward window)
-	int oldest_sq_sender = (most_recent_acked - wnd_ + 1 + sn_cnt)%sn_cnt; //the lower bound of ARQTx's active window as seen by ARQRx before receiving seq_num
-	int new_oldest_sq_sender = (seq_num - wnd_ + 1 + sn_cnt)%sn_cnt; //the lower bound of ARQTx's active window as seen by ARQRx after receiving seq_num
+
+  int coding_wnd = arq_tx_->get_ratek() * arq_tx_->get_codingdepth(); //maybe define coding window in header file for general usage
+  int oldest_sq_sender = (most_recent_acked - coding_wnd + 1 + sn_cnt)%sn_cnt; //the lower bound of ARQTx's active window as seen by ARQRx before receiving seq_num
+	int new_oldest_sq_sender = (seq_num - coding_wnd + 1 + sn_cnt)%sn_cnt; //the lower bound of ARQTx's active window as seen by ARQRx after receiving seq_num
 
 	int nxt_seq = (last_fwd_sn_ + 1)%sn_cnt; //the next expected seq_num
 
@@ -692,12 +700,14 @@ void ARQAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that read
 	pkt_cnt = pkt_cnt << 8 | *(contents+3);
 	if (debug) printf("ARQRx, parse_coded_packet: The coded pkt contains: ");
 
+  set<int> pkt_contents;
 	for(int j = 1; j <= pkt_cnt; j++){
 		readint = *(contents+sizeof(int)*j);
 		readint = readint << 8 | *(contents+sizeof(int)*j+1);
 		readint = readint << 8 | *(contents+sizeof(int)*j+2);
 		readint = readint << 8 | *(contents+sizeof(int)*j+3);
 		if (debug) printf("%d", readint);
+    pkt_contents.insert(readint);
 		if(known_packets.find(readint) == known_packets.end()){ //is not included in already known
 			if (debug) printf("+");
 			lost_packets.insert(readint);
@@ -747,8 +757,10 @@ void ARQAcker::decode(Handler* h, bool afterCoded){
 		within_fww = ((fw_dis <= wnd_) && (fw_dis > 0)) ? (true) : (false);
 		bw_dis = (most_recent_acked - lost_sn + sn_cnt)%sn_cnt;
 		within_bww = (bw_dis < wnd_) ? (true) : (false);
-		oldest_sq_sender = (most_recent_acked - wnd_ + 1 + sn_cnt)%sn_cnt;
-		new_oldest_sq_sender = (lost_sn - wnd_ + 1 + sn_cnt)%sn_cnt;
+
+    int coding_wnd = arq_tx_->get_ratek() * arq_tx_->get_codingdepth();
+		oldest_sq_sender = (most_recent_acked - coding_wnd + 1 + sn_cnt)%sn_cnt;
+		new_oldest_sq_sender = (lost_sn - coding_wnd + 1 + sn_cnt)%sn_cnt;
 		nxt_seq = (last_fwd_sn_ + 1)%sn_cnt;
 
 		if (within_fww){ //decoded frame is in the forward window
@@ -924,10 +936,8 @@ void ARQAcker::parse_coded_ack(Packet *p){
 			event_buf[seq_number]->isCancelled = true;
 			if (debug) printf("ARQNacker, parse_coded_ack: NACK for pkt %d is cancelled.\n", seq_number);
 		}
-		//arq_tx_->ack(seq_number, -1);
 
 	}
-	//Packet::free(p);
 
 } //end of parse_coded_ack
 

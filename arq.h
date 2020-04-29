@@ -63,6 +63,7 @@ class ARQTx : public Connector {
 	int num_pending_retrans_; //number of frames needed to be retransmitted (after the first attempt)
 	int rate_k; //number of native packets sent before coded
 	int coding_depth; //the number of coding cycles used to create a coded
+  int coding_wnd; //coding window used for creating coded packets, <= wnd_
 
 	double lnk_bw_; //the bandwidth of the link_
 	double lnk_delay_; //the delay of the link_
