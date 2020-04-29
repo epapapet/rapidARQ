@@ -64,6 +64,7 @@ TetrysTx::TetrysTx() : arqh_(*this)
 
 	start_time = -1; //time when 1st packet arrived at TetrysTx::recv
 	packets_sent = 0; //unique packets sent
+  pkt_rtxs = 0; //the total number of pkt retransmissions
 } //end of constructor
 
 int TetrysTx::command(int argc, const char*const* argv)
@@ -284,6 +285,7 @@ void TetrysTx::nack(int rcv_sn, int rcv_uid)
 			num_rtxs[rcv_sn%wnd_]++;
 			status[rcv_sn%wnd_] = SENT;
 			Packet *newp = pkt_buf[rcv_sn%wnd_]->copy();
+      pkt_rtxs++;
 			send(newp,&arqh_);
 		} else {
 			num_pending_retrans_++;
@@ -313,6 +315,7 @@ void TetrysTx::resume()
 		num_pending_retrans_--;
 		blocked_ = 1;
 		Packet *pnew = (pkt_buf[runner_])->copy();
+    pkt_rtxs++;
 		send(pnew,&arqh_);
 	} else {//there are no pending retransmision, check whether it is possible to send a new packet
 		//TO DO: check whether active window reaches wnd_ and TetrysTx is stuck without asking queue for the next frame
@@ -634,18 +637,20 @@ void TetrysAcker::print_stats()
 	printf("Finish time (sec):\t\t%f\n", finish_time);
 
 	printf("Total number of delivered pkts:\t%d\n", delivered_pkts);
-	printf("Delivered data (in bytes):\t%d\n", delivered_data);
+	printf("Delivered data (in mega bytes):\t%.3f\n", delivered_data/1048576);
 	double throughput = (delivered_data * 8) / (double) (finish_time - arq_tx_->get_start_time());
 	printf("Total throughput (Mbps):\t%f\n", throughput * 1.0e-6);
 
-	double mean = sum_of_delay / delivered_pkts;
-	printf("Mean delay (msec):\t\t%f\n", mean * 1.0e+3);
-
 	printf("Unique packets sent:\t\t%d\n", arq_tx_->get_total_packets_sent());
+  double mean = sum_of_delay / delivered_pkts;
+	printf("Mean delay (msec):\t\t%f\n", mean * 1.0e+3);
+  double avg_rtxs = (double)(arq_tx_->get_total_retransmissions()) / (double)(arq_tx_->get_total_packets_sent());
+	printf("Avg num of retransmissions:\t%f\n", avg_rtxs);
 	printf("Packet loss rate:\t\t%f\n", 1 - (delivered_pkts / (double) arq_tx_->get_total_packets_sent()));
 
 	printf("Number of actual decodings:\t%d\n", num_of_decodings);
 	printf("Average decoding matrix size:\t%f\n", ( (num_of_decodings == 0) ? (0) : ((double) avg_dec_matrix_size / num_of_decodings) ));
+  printf("//------------------------------------------//\n");
 } //end of print_stats
 
 void TetrysAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that reads a coded packet and update the list with known packets
