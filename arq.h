@@ -34,6 +34,7 @@ class ARQTx : public Connector {
 	//functions for setting protocol parameters
 	int get_ratek() {return rate_k;}
 	int get_codingdepth() {return coding_depth;}
+  int get_coding_wnd() {return coding_wnd;}
 	double get_linkdelay() {return lnk_delay_;}
 	double get_linkbw() {return lnk_bw_;}
 	int get_apppktsize() {return app_pkt_Size_;}
