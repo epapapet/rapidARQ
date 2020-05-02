@@ -43,7 +43,6 @@ class ARQTx : public Connector {
 	int get_total_packets_sent() {return packets_sent;}
   int get_total_coded_packets_sent() {return coded_pkts_sent;}
   int get_total_retransmissions() {return pkt_rtxs;}
-	double get_pkt_tx_start(int seq_num) {return pkt_tx_start[seq_num%wnd_];}
  protected:
 	ARQHandler arqh_;
 	Handler* handler_;

@@ -83,8 +83,7 @@ int ARQTx::command(int argc, const char*const* argv)
 			status = new ARQStatus[wnd_]; //the status for each frame: IDLE,SENT,ACKED,RTX,DROP
 			num_rtxs = new int[wnd_]; //the number of retransmissions executed for each frame
 			pkt_uids = new int[wnd_]; //buffer for storing the uids of pending frames: used only for diagnostic purposes
-			pkt_tx_start = new double[wnd_]; //the start time of a packet's transmission, negative value indicates pkt not sent
-			for(int i=0; i<wnd_; i++){ pkt_buf[i] = NULL; status[i] = IDLE; num_rtxs[i] = 0; pkt_uids[i]=-1; pkt_tx_start[i]=-1;}
+			for(int i=0; i<wnd_; i++){ pkt_buf[i] = NULL; status[i] = IDLE; num_rtxs[i] = 0; pkt_uids[i]=-1; }
       coding_wnd = (coding_depth == 0) ? (wnd_) : (coding_depth * rate_k);
       if (coding_wnd > wnd_) {
         tcl.resultf("The product coding_depth*rate_k should not exceed wnd\n");
@@ -141,7 +140,7 @@ void ARQTx::recv(Packet* p, Handler* h)
 		status[most_recent_sq_%wnd_] = SENT;
 		num_rtxs[most_recent_sq_%wnd_] = 0;
 
-		pkt_tx_start[most_recent_sq_%wnd_] = Scheduler::instance().clock(); //retransmitted pkts are not sent through recv(), so this is a new pkt
+    ch->ts_arr_ = Scheduler::instance().clock(); //used to calculate delay, retransmitted pkts are not sent through recv(), so this is a new pkt
 
 		most_recent_sq_ = (most_recent_sq_+1)%sn_cnt;
 
@@ -396,8 +395,6 @@ void ARQTx::reset_lastacked()
 		num_rtxs[runner_] = 0;
 		pkt_uids[runner_] = -1;
 
-		pkt_tx_start[runner_] = -1;
-
 		last_acked_sq_ = (last_acked_sq_ + 1)%sn_cnt;
 		runner_ = (runner_ + 1)%wnd_;
 	} while (runner_ != (most_recent_sq_%wnd_));
@@ -562,8 +559,8 @@ void ARQAcker::recv(Packet* p, Handler* h)
 			finish_time = Scheduler::instance().clock();
 			delivered_data += ch->size_;
 			delivered_pkts++;
-      //printf("recv, The delay is %.4f\n", Scheduler::instance().clock() - arq_tx_->get_pkt_tx_start(nxt_seq));
-			sum_of_delay = sum_of_delay + Scheduler::instance().clock() - arq_tx_->get_pkt_tx_start(nxt_seq);
+
+			sum_of_delay = sum_of_delay + Scheduler::instance().clock() - ch->ts_arr_;
 
 			send(p,h);
 
@@ -646,8 +643,8 @@ void ARQAcker::deliver_frames(int steps, bool mindgaps, Handler *h)
 			finish_time = Scheduler::instance().clock();
 			delivered_data += (HDR_CMN(pkt_buf[((last_fwd_sn_+1)%sn_cnt)%wnd_]))->size_;
 			delivered_pkts++;
-      //printf("deliver_frames: the delay is %.4f(%d)\n", Scheduler::instance().clock() - arq_tx_->get_pkt_tx_start((HDR_CMN(pkt_buf[((last_fwd_sn_+1)%sn_cnt)%wnd_]))->opt_num_forwards_), status[((last_fwd_sn_+1)%sn_cnt)%wnd_]);
-			sum_of_delay = sum_of_delay + Scheduler::instance().clock() - arq_tx_->get_pkt_tx_start((HDR_CMN(pkt_buf[((last_fwd_sn_+1)%sn_cnt)%wnd_]))->opt_num_forwards_);
+
+			sum_of_delay = sum_of_delay + Scheduler::instance().clock() - (HDR_CMN(pkt_buf[((last_fwd_sn_+1)%sn_cnt)%wnd_]))->ts_arr_;
 
 			send(pkt_buf[((last_fwd_sn_+1)%sn_cnt)%wnd_],h);
 		} else {
@@ -794,8 +791,8 @@ void ARQAcker::decode(Handler* h, bool afterCoded){
 				finish_time = Scheduler::instance().clock();
 				delivered_pkts++;
 				delivered_data += HDR_CMN(pkt_buf[lost_sn%wnd_])->size_;
-        //printf("Decode: the delay is %.4f\n", Scheduler::instance().clock() - arq_tx_->get_pkt_tx_start(lost_sn));
-				sum_of_delay = sum_of_delay + Scheduler::instance().clock() - arq_tx_->get_pkt_tx_start(lost_sn);
+
+				sum_of_delay = sum_of_delay + Scheduler::instance().clock() - HDR_CMN(pkt_buf[lost_sn%wnd_])->ts_arr_;
 
 				send(pkt_buf[lost_sn%wnd_],h);
 				pkt_buf[lost_sn%wnd_] = NULL;
