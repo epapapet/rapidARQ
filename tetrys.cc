@@ -64,6 +64,7 @@ TetrysTx::TetrysTx() : arqh_(*this)
 
 	start_time = -1; //time when 1st packet arrived at TetrysTx::recv
 	packets_sent = 0; //unique packets sent
+  coded_pkts_sent = 0; ////total nu,ber of csent coded pkts
   pkt_rtxs = 0; //the total number of pkt retransmissions
 } //end of constructor
 
@@ -107,11 +108,7 @@ void TetrysTx::recv(Packet* p, Handler* h)
 		fprintf(stderr, "Error at TetrysTx::recv, Cannot transmit when &arqh_ is Null.\n");
 		abort();
 	}
-	if (pending) {
-		fprintf(stderr, "Error at TetrysTx::recv, Tx should not have a pending frame when recv is called.\n");
-		abort();
-	}
-	if ((status[most_recent_sq_%wnd_] != IDLE) && ((HDR_CMN(p))-> opt_num_forwards_ != -1000)) {
+	if ((status[most_recent_sq_%wnd_] != IDLE) && ((HDR_CMN(p))-> opt_num_forwards_ >= 0)) {
 		fprintf(stderr, "Error at TetrysTx::recv, storing position should be in IDLE mode.\n");
 		abort();
 	}
@@ -120,10 +117,17 @@ void TetrysTx::recv(Packet* p, Handler* h)
 	if (h != 0) handler_ = h;
 	//----------------------------//
 
-	if (blocked_) { pending = p; return; }
+	if ((blocked_) && ((HDR_CMN(p))-> opt_num_forwards_ >= 0)) {
+    if (pending) { fprintf(stderr, "Error at TetrysTx::recv, Tx should not have a pending frame when recv is called.\n"); abort(); }
+    pending = p; return;
+  }
+  if ((blocked_) && ((HDR_CMN(p))-> opt_num_forwards_ < 0)) {
+    if (coded) { fprintf(stderr, "Error at TetrysTx::recv, Tx should not have a pending frame when recv is called.\n"); abort(); }
+    coded = p; return;
+  }
 
 	hdr_cmn *ch = HDR_CMN(p);
-	if (ch-> opt_num_forwards_ != -1000){
+	if (ch-> opt_num_forwards_ >= 0){
 
 		ch-> opt_num_forwards_ = most_recent_sq_;
 		if (pkt_buf[most_recent_sq_%wnd_]) {fprintf(stderr, "Error at TetrysTx::recv, storing position found non empty.\n"); abort();} //pkt_buf is cleared by reset_lastacked
@@ -132,14 +136,13 @@ void TetrysTx::recv(Packet* p, Handler* h)
 		status[most_recent_sq_%wnd_] = SENT;
 		num_rtxs[most_recent_sq_%wnd_] = 0;
 
-		packets_sent += 1;
 		pkt_tx_start[most_recent_sq_%wnd_] = Scheduler::instance().clock(); //retransmitted pkts are not sent through recv(), so this is a new pkt
 
 		most_recent_sq_ = (most_recent_sq_+1)%sn_cnt;
 
 		native_counter++;
 		if (native_counter == rate_k){ //prepare a coded frame
-			pending = create_coded_packet();
+			coded = create_coded_packet();
 			native_counter = 0;
 		}
 
@@ -148,12 +151,14 @@ void TetrysTx::recv(Packet* p, Handler* h)
 	if (debug) printf("TetrysTx, recv: Sending pkt %d. SimTime=%.8f.\n", ch-> opt_num_forwards_, Scheduler::instance().clock());
 
 	blocked_ = 1;
-	if (ch-> opt_num_forwards_ != -1000){
+	if (ch-> opt_num_forwards_ >= 0){
 		//In general, when sending a native frame we create a copy (even in retransmissions) to decouple TetrysTx and TetrysRx
 		//TetrysTx is responsible for freeing frames sent from queue while TetrysRx delivers frames to upper layers and frees frames not eventually delivered
+    packets_sent += 1;
 		Packet *pnew = p->copy();
 		send(pnew,&arqh_);
 	} else {
+    coded_pkts_sent++;
 		send(p,&arqh_);
 	}
 
@@ -163,7 +168,7 @@ Packet* TetrysTx::create_coded_packet(){ //create a new coded packet with seq nu
 
 	Packet *cpkt = Packet::alloc();
 	hdr_cmn *ch2 = HDR_CMN(cpkt);
-	ch2->opt_num_forwards_ = -1000; //indicates a coded packet
+	ch2->opt_num_forwards_ = -10000 + (most_recent_sq_ - 1 + sn_cnt)%sn_cnt; //indicates a coded packet, SHOULD BE ALWAYS < 0
 
 	unsigned char *buffer = new unsigned char[sizeof(int)*(wnd_+1)]; //maximum of wnd_ sequence numbers plus a counter
 	int runner_ = ((last_acked_sq_+1)%sn_cnt)%wnd_;
@@ -288,6 +293,11 @@ void TetrysTx::nack(int rcv_sn, int rcv_uid)
 			status[rcv_sn%wnd_] = SENT;
 			Packet *newp = pkt_buf[rcv_sn%wnd_]->copy();
       pkt_rtxs++;
+      native_counter++;
+      if (native_counter == rate_k){ //prepare a coded frame
+        coded = create_coded_packet();
+        native_counter = 0;
+      }
 			send(newp,&arqh_);
 		} else {
 			num_pending_retrans_++;
@@ -304,8 +314,11 @@ void TetrysTx::resume()
 {
 	//This procedure is invoked by link_ when a transmission is completed, i.e., it is invoked T secs after TetrysTx executes send() where T equals transmission_delay.
 	blocked_ = 0;
-
-	if (pending){
+  if (coded){
+    Packet *fwpkt = coded;
+		coded = NULL;
+		recv(fwpkt, handler_);
+  } else if (pending){
 		Packet *fwpkt = pending;
 		pending = NULL;
 		recv(fwpkt, handler_);
@@ -318,6 +331,11 @@ void TetrysTx::resume()
 		blocked_ = 1;
 		Packet *pnew = (pkt_buf[runner_])->copy();
     pkt_rtxs++;
+    native_counter++;
+		if (native_counter == rate_k){ //prepare a coded frame
+			coded = create_coded_packet();
+			native_counter = 0;
+		}
 		send(pnew,&arqh_);
 	} else {//there are no pending retransmision, check whether it is possible to send a new packet
 		//TO DO: check whether active window reaches wnd_ and TetrysTx is stuck without asking queue for the next frame
@@ -500,7 +518,7 @@ int TetrysAcker::command(int argc, const char*const* argv)
 void TetrysAcker::recv(Packet* p, Handler* h)
 {
 
-	if((HDR_CMN(p))->opt_num_forwards_ == -1000){ //coded frames should be processed by parse_coded_packet
+	if((HDR_CMN(p))->opt_num_forwards_ < 0){ //coded frames should be processed by parse_coded_packet
 		parse_coded_packet(p, h);
 		return;
 	}
@@ -644,6 +662,7 @@ void TetrysAcker::print_stats()
 	printf("Total throughput (Mbps):\t%f\n", throughput * 1.0e-6);
 
 	printf("Unique packets sent:\t\t%d\n", arq_tx_->get_total_packets_sent());
+  printf("Coded packets sent:\t\t%d\n", arq_tx_->get_total_coded_packets_sent());
   double mean = sum_of_delay / delivered_pkts;
 	printf("Mean delay (msec):\t\t%f\n", mean * 1.0e+3);
   double avg_rtxs = (double)(arq_tx_->get_total_retransmissions()) / (double)(arq_tx_->get_total_packets_sent());
@@ -817,7 +836,7 @@ Packet* TetrysAcker::create_coded_ack(){
 
 	Packet *cpkt = Packet::alloc();
 	hdr_cmn *ch2 = HDR_CMN(cpkt);
-	ch2->opt_num_forwards_ = -2000; //coded packet ACK
+	ch2->opt_num_forwards_ = -10001; //coded packet ACK
 	unsigned char *buffer = new unsigned char[sizeof(int)*((int)(known_packets.size()) + 1)]; //4 bytes for each decoded frame plus a byte for the counter
 
 	int cnt_pkts = 0;
@@ -998,7 +1017,7 @@ void TetrysNacker::recv(Packet* p, Handler* h)
 {
 
 	hdr_cmn *ch = HDR_CMN(p);
-	if(ch->opt_num_forwards_ == -1000){ //coded packet lost, do nothing (but free packet memory)
+	if(ch->opt_num_forwards_ < 0){ //coded packet lost, do nothing (but free packet memory)
 		Packet::free(p);
 		return;
 	}

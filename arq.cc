@@ -86,6 +86,10 @@ int ARQTx::command(int argc, const char*const* argv)
 			pkt_tx_start = new double[wnd_]; //the start time of a packet's transmission, negative value indicates pkt not sent
 			for(int i=0; i<wnd_; i++){ pkt_buf[i] = NULL; status[i] = IDLE; num_rtxs[i] = 0; pkt_uids[i]=-1; pkt_tx_start[i]=-1;}
       coding_wnd = (coding_depth == 0) ? (wnd_) : (coding_depth * rate_k);
+      if (coding_wnd > wnd_) {
+        tcl.resultf("The product coding_depth*rate_k should not exceed wnd\n");
+				return(TCL_ERROR);
+      }
       return(TCL_OK);
 		}
 	} return Connector::command(argc, argv);
@@ -109,10 +113,6 @@ void ARQTx::recv(Packet* p, Handler* h)
 		fprintf(stderr, "Error at ARQTx::recv, Cannot transmit when &arqh_ is Null.\n");
 		abort();
 	}
-	if (pending) {
-		fprintf(stderr, "Error at ARQTx::recv, Tx should not have a pending frame when recv is called.\n");
-		abort();
-	}
 	if ((status[most_recent_sq_%wnd_] != IDLE) && ((HDR_CMN(p))-> opt_num_forwards_ != -1000)) {
 		fprintf(stderr, "Error at ARQTx::recv, storing position should be in IDLE mode.\n");
 		abort();
@@ -122,7 +122,14 @@ void ARQTx::recv(Packet* p, Handler* h)
 	if (h != 0) handler_ = h;
 	//----------------------------//
 
-	if (blocked_) { pending = p; return; }
+  if ((blocked_) && ((HDR_CMN(p))-> opt_num_forwards_ != -1000)) {
+    if (pending) { fprintf(stderr, "Error at TetrysTx::recv, Tx should not have a pending frame when recv is called.\n"); abort(); }
+    pending = p; return;
+  }
+  if ((blocked_) && ((HDR_CMN(p))-> opt_num_forwards_ == -1000)) {
+    if (coded) { fprintf(stderr, "Error at TetrysTx::recv, Tx should not have a pending frame when recv is called.\n"); abort(); }
+    coded = p; return;
+  }
 
 	hdr_cmn *ch = HDR_CMN(p);
 	if (ch-> opt_num_forwards_ != -1000){
@@ -134,14 +141,13 @@ void ARQTx::recv(Packet* p, Handler* h)
 		status[most_recent_sq_%wnd_] = SENT;
 		num_rtxs[most_recent_sq_%wnd_] = 0;
 
-		packets_sent += 1;
 		pkt_tx_start[most_recent_sq_%wnd_] = Scheduler::instance().clock(); //retransmitted pkts are not sent through recv(), so this is a new pkt
 
 		most_recent_sq_ = (most_recent_sq_+1)%sn_cnt;
 
 		native_counter++;
 		if (native_counter == rate_k){ //prepare a coded frame
-			pending = create_coded_packet();
+			coded = create_coded_packet();
 			native_counter = 0;
 		}
 
@@ -153,9 +159,11 @@ void ARQTx::recv(Packet* p, Handler* h)
 	if (ch-> opt_num_forwards_ != -1000){
 		//In general, when sending a native frame we create a copy (even in retransmissions) to decouple ARQTx and ARQRx
 		//ARQTx is responsible for freeing frames sent from queue while ARQRx delivers frames to upper layers and frees frames not eventually delivered
+    packets_sent += 1;
 		Packet *pnew = p->copy();
 		send(pnew,&arqh_);
 	} else {
+    coded_pkts_sent++;
 		send(p,&arqh_);
 	}
 
@@ -291,6 +299,11 @@ void ARQTx::nack(int rcv_sn, int rcv_uid)
 			status[rcv_sn%wnd_] = SENT;
 			Packet *newp = pkt_buf[rcv_sn%wnd_]->copy();
       pkt_rtxs++;
+      native_counter++;
+      if (native_counter == rate_k){ //prepare a coded frame
+        coded = create_coded_packet();
+        native_counter = 0;
+      }
 			send(newp,&arqh_);
 		} else {
 			num_pending_retrans_++;
@@ -308,7 +321,11 @@ void ARQTx::resume()
 	//This procedure is invoked by link_ when a transmission is completed, i.e., it is invoked T secs after ARQTx executes send() where T equals transmission_delay.
 	blocked_ = 0;
 
-	if (pending){
+  if (coded){
+    Packet *fwpkt = coded;
+		coded = NULL;
+		recv(fwpkt, handler_);
+  } else if (pending){
 		Packet *fwpkt = pending;
 		pending = NULL;
 		recv(fwpkt, handler_);
@@ -321,6 +338,11 @@ void ARQTx::resume()
 		blocked_ = 1;
 		Packet *pnew = (pkt_buf[runner_])->copy();
     pkt_rtxs++;
+    native_counter++;
+		if (native_counter == rate_k){ //prepare a coded frame
+			coded = create_coded_packet();
+			native_counter = 0;
+		}
 		send(pnew,&arqh_);
 	} else {//there are no pending retransmision, check whether it is possible to send a new packet
 		//TO DO: check whether active window reaches wnd_ and ARQTx is stuck without asking queue for the next frame
@@ -652,6 +674,7 @@ void ARQAcker::print_stats()
 	printf("Total throughput (Mbps):\t%f\n", throughput * 1.0e-6);
 
 	printf("Unique packets sent:\t\t%d\n", arq_tx_->get_total_packets_sent());
+  printf("Coded packets sent:\t\t%d\n", arq_tx_->get_total_coded_packets_sent());  
   double mean = sum_of_delay / delivered_pkts;
 	printf("Mean delay (msec):\t\t%f\n", mean * 1.0e+3);
   double avg_rtxs = (double)(arq_tx_->get_total_retransmissions()) / (double)(arq_tx_->get_total_packets_sent());

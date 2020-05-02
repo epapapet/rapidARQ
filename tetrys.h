@@ -40,13 +40,15 @@ class TetrysTx : public Connector {
 	//functions used in statistics logging
 	double get_start_time() {return start_time;}
 	int get_total_packets_sent() {return packets_sent;}
+  int get_total_coded_packets_sent() {return coded_pkts_sent;}
   int get_total_retransmissions() {return pkt_rtxs;}
 	double get_pkt_tx_start(int seq_num) {return pkt_tx_start[seq_num%wnd_];}
  protected:
 	TetrysHandler arqh_;
 	Handler* handler_;
 
-	Packet *pending; //used for storing a packet from queue that finds the channel blocked_
+	Packet *pending; //used for storing a native packet from queue that finds the channel blocked_
+  Packet *coded; //used for storing a coded packet that finds the channel blocked_
 
 	int wnd_;  //window size
 	int sn_cnt; //the total count of used sequence numbers
@@ -73,6 +75,7 @@ class TetrysTx : public Connector {
 	//Statistics
 	double start_time; //time when 1st packet arrived at TetrysTx::recv
 	int packets_sent; //unique packets sent
+  int coded_pkts_sent; //total nu,ber of csent coded pkts
   int pkt_rtxs; //the total number of retransmissions
 	double *pkt_tx_start; //the start time of a packet's transmission
 
