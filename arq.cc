@@ -227,7 +227,10 @@ void ARQTx::ack(int rcv_sn, int rcv_uid)
 
 		if(status[rcv_sn%wnd_] == RTX) num_pending_retrans_--; //reduce the number of scheduled retransmissions
 		status[rcv_sn%wnd_] = ACKED;
-		if (rcv_sn%wnd_ == ((last_acked_sq_ + 1)%sn_cnt)%wnd_) reset_lastacked();  //acked frame is next in order, so check whether the active window should advance
+		if (rcv_sn%wnd_ == ((last_acked_sq_ + 1)%sn_cnt)%wnd_) {
+      reset_lastacked();  //acked frame is next in order, so check whether the active window should advance
+      if (!blocked_) handler_->handle(0); //ask queue_ to deliver next packet
+    }
 	}
 
 } //end of ack
@@ -311,7 +314,10 @@ void ARQTx::nack(int rcv_sn, int rcv_uid)
 	} else {//packet should be dropped
 		if (debug) printf("ARQTx, nack: Dropping pkt %d. SimTime=%.8f.\n", rcv_sn, Scheduler::instance().clock());
 		status[rcv_sn%wnd_] = DROP;
-		if (rcv_sn%wnd_ == ((last_acked_sq_ + 1)%sn_cnt)%wnd_) reset_lastacked(); //droped frame is next in order so check whether the active window should advance
+		if (rcv_sn%wnd_ == ((last_acked_sq_ + 1)%sn_cnt)%wnd_) {
+      reset_lastacked(); //droped frame is next in order so check whether the active window should advance
+      if (!blocked_) handler_->handle(0); //ask queue_ to deliver next packet
+    }
 	}
 
 }//end of nack
@@ -381,10 +387,6 @@ void ARQTx::reset_lastacked()
 
 	if((last_acked_sq_+1)%sn_cnt == most_recent_sq_) return; //no need to reset last_ack because there is no packet stored (MOST RECENT - LAST ACKED = 1)
 
-	int current_wnd_ = (most_recent_sq_ - last_acked_sq_ + sn_cnt)%sn_cnt;
-	int need_to_resume = false;
-	if (current_wnd_ > wnd_) need_to_resume = true; //in this case resume is not allowed to ask queue for the next frame, so we must ask the queue since after reseting the last_acked_sq the current_wnd_ wnd will be =wnd_ (note that here current_wnd_ is active window + 1)
-
 	int runner_ = ((last_acked_sq_+1)%sn_cnt)%wnd_;
 	do {
 		if ((status[runner_] == RTX) || (status[runner_] == SENT)) break;
@@ -401,8 +403,6 @@ void ARQTx::reset_lastacked()
 	} while (runner_ != (most_recent_sq_%wnd_));
 
 	if(debug) printf("ARQTx, reset_lastacked: new LA(MR) are %d(%d). SimTime=%.8f.\n", last_acked_sq_, most_recent_sq_, Scheduler::instance().clock());
-
-	if ((need_to_resume) && (!blocked_)) handler_->handle(0); //ask queue_ to deliver next packet
 
 } // end of reset_lastacked
 
@@ -670,12 +670,13 @@ void ARQAcker::print_stats()
 
 	printf("Total number of delivered pkts:\t%d\n", delivered_pkts);
 	printf("Delivered data (in mega bytes):\t%.3f\n", delivered_data/1048576);
+  if (delivered_pkts == 0) {finish_time = Scheduler::instance().clock();} //hack for the case that deliver_frames is not called
 	double throughput = (delivered_data * 8) / (double) (finish_time - arq_tx_->get_start_time());
 	printf("Total throughput (Mbps):\t%f\n", throughput * 1.0e-6);
 
 	printf("Unique packets sent:\t\t%d\n", arq_tx_->get_total_packets_sent());
-  printf("Coded packets sent:\t\t%d\n", arq_tx_->get_total_coded_packets_sent());  
-  double mean = sum_of_delay / delivered_pkts;
+  printf("Coded packets sent:\t\t%d\n", arq_tx_->get_total_coded_packets_sent());
+  double mean = (delivered_pkts == 0) ? (0.0) : (sum_of_delay / delivered_pkts);
 	printf("Mean delay (msec):\t\t%f\n", mean * 1.0e+3);
   double avg_rtxs = (double)(arq_tx_->get_total_retransmissions()) / (double)(arq_tx_->get_total_packets_sent());
 	printf("Avg num of retransmissions:\t%f\n", avg_rtxs);
