@@ -653,22 +653,22 @@ void TetrysAcker::print_stats()
 	printf("Start time (sec):\t\t%f\n", arq_tx_->get_start_time());
 	printf("Finish time (sec):\t\t%f\n", finish_time);
 
-	printf("Total number of delivered pkts:\t%d\n", delivered_pkts);
+	printf("Total number of delivered pkts:\t%.0f\n", delivered_pkts);
 	printf("Delivered data (in mega bytes):\t%.3f\n", delivered_data/1048576);
   if (delivered_pkts == 0) {finish_time = Scheduler::instance().clock();} //hack for the case that deliver_frames is not called
-	double throughput = (delivered_data * 8) / (double) (finish_time - arq_tx_->get_start_time());
+	double throughput = (delivered_data * 8) / (finish_time - arq_tx_->get_start_time());
 	printf("Total throughput (Mbps):\t%f\n", throughput * 1.0e-6);
 
-	printf("Unique packets sent:\t\t%d\n", arq_tx_->get_total_packets_sent());
-  printf("Coded packets sent:\t\t%d\n", arq_tx_->get_total_coded_packets_sent());
+	printf("Unique packets sent:\t\t%.0f\n", arq_tx_->get_total_packets_sent());
+  printf("Coded packets sent:\t\t%.0f\n", arq_tx_->get_total_coded_packets_sent());
   double mean = (delivered_pkts == 0) ? (0.0) : (sum_of_delay / delivered_pkts);
 	printf("Mean delay (msec):\t\t%f\n", mean * 1.0e+3);
-  double avg_rtxs = (double)(arq_tx_->get_total_retransmissions()) / (double)(arq_tx_->get_total_packets_sent());
+  double avg_rtxs = arq_tx_->get_total_retransmissions() / arq_tx_->get_total_packets_sent();
 	printf("Avg num of retransmissions:\t%f\n", avg_rtxs);
-	printf("Packet loss rate:\t\t%f\n", 1 - (delivered_pkts / (double) arq_tx_->get_total_packets_sent()));
+	printf("Packet loss rate:\t\t%f\n", 1 - (delivered_pkts / arq_tx_->get_total_packets_sent()));
 
-	printf("Number of actual decodings:\t%d\n", num_of_decodings);
-	printf("Average decoding matrix size:\t%f\n", ( (num_of_decodings == 0) ? (0) : ((double) avg_dec_matrix_size / num_of_decodings) ));
+	printf("Number of actual decodings:\t%.0f\n", num_of_decodings);
+	printf("Average decoding matrix size:\t%f\n", ( (num_of_decodings == 0) ? (0) : (avg_dec_matrix_size / num_of_decodings) ));
   printf("//------------------------------------------//\n");
 } //end of print_stats
 

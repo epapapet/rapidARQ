@@ -39,9 +39,9 @@ class CaterpillarTx : public Connector {
 	int get_apppktsize() {return app_pkt_Size_;}
 	//functions used in statistics logging
 	double get_start_time() {return start_time;}
-	int get_total_packets_sent() {return packets_sent;}
-  int get_total_coded_packets_sent() {return coded_pkts_sent;}
-  int get_total_retransmissions() {return pkt_rtxs;}
+	double get_total_packets_sent() {return packets_sent;}
+  double get_total_coded_packets_sent() {return coded_pkts_sent;}
+  double get_total_retransmissions() {return pkt_rtxs;}
  protected:
 	CaterpillarHandler arqh_;
 	Handler* handler_;
@@ -73,10 +73,9 @@ class CaterpillarTx : public Connector {
 
 	//Statistics
 	double start_time; //time when 1st packet arrived at CaterpillarTx::recv
-	int packets_sent; //unique packets sent
-  int coded_pkts_sent; //total nu,ber of csent coded pkts
-  int pkt_rtxs; //the total number of retransmissions
-	double *pkt_tx_start; //the start time of a packet's transmission
+	double packets_sent; //unique packets sent
+  double coded_pkts_sent; //total nu,ber of csent coded pkts
+  double pkt_rtxs; //the total number of retransmissions
 
 	int findpos_retrans();
 	void reset_lastacked();
@@ -134,11 +133,11 @@ public:
 
 	//Statistics
 	double finish_time; //time when the last pkt was delivered to the receiver's upper layer, used to calculate throughput
-	int delivered_pkts; //the total number of pkts delivered to the receiver's upper layer
+	double delivered_pkts; //the total number of pkts delivered to the receiver's upper layer
 	double delivered_data; //the total number of bytes delivered to the receiver's upper layer
 	double sum_of_delay; //sum of delays for every packet delivered, used to calculate average delay
-	int avg_dec_matrix_size; //the avg size of the decoding matrix when decoding is performed (used to estimate processing overhead)
-	int num_of_decodings; //number of decoding operations
+	double avg_dec_matrix_size; //the avg size of the decoding matrix when decoding is performed (used to estimate processing overhead)
+	double num_of_decodings; //number of decoding operations
 
 	void deliver_frames(int steps, bool mindgaps, Handler *h);
 	void clean_decoding_matrix(int from, int to);
