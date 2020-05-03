@@ -58,7 +58,7 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth limit vgseed ackerr
     $tARQ_ set coding_depth $coddpth
     $tARQ_ set lnk_bw_ [$self bw]
     $tARQ_ set lnk_delay_ [$self delay]
-    $tARQ_ set app_pkt_Size_ [expr {8*($apktsz + 40)}]
+    $tARQ_ set app_pkt_Size_ [expr {$apktsz + 40}]
     $tARQ_ setup-wnd $wndsize
     
 

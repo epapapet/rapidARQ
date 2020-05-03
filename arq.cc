@@ -195,7 +195,7 @@ Packet* ARQTx::create_coded_packet(){ //create a new coded packet with seq nums 
 	*(buffer+2) = (cnt_pkts >> 8) & 0xFF;
 	*(buffer+3) = cnt_pkts & 0xFF;
 
-	ch2->size_ = sizeof(int)*(cnt_pkts+1) + 1040; //size of native frame plus the size of the encoding vector
+	ch2->size_ = sizeof(int)*(cnt_pkts+1) + app_pkt_Size_; //size of native frame plus the size of the encoding vector (bytes only for coefficients)
 	PacketData *cp_data;
 	cp_data = new PacketData(sizeof(int)*(cnt_pkts+1));
 	unsigned char *pointer_to_data;
@@ -426,9 +426,9 @@ int ARQRx::command(int argc, const char*const* argv)
 	if (argc == 2) {
 		if (strcmp(argv[1], "update-delays") == 0) {
       bool delayNack = false; //bool variable that controls the value assigned to timeout_. If false, keep timeout = delay.
-			delay_ = arq_tx_->get_linkdelay();
+			delay_ = arq_tx_->get_linkdelay(); //the propagation delay
 			double nack_delay = (arq_tx_->get_codingdepth() * (arq_tx_->get_ratek() + 1) * arq_tx_->get_apppktsize())/arq_tx_->get_linkbw() + arq_tx_->get_linkdelay();
-      timeout_ = (delayNack == false) ? delay_ : nack_delay;
+      timeout_ = (delayNack == false) ? (delay_ + 8.0/arq_tx_->get_linkbw()): nack_delay;
       return(TCL_OK);
 		}
 	} else if (argc == 3) {
@@ -618,7 +618,7 @@ void ARQAcker::recv(Packet* p, Handler* h)
 	new_ACKEvent->isCancelled = false;
 	ack_e = (Event *)new_ACKEvent;
 	if (delay_ > 0)
-		Scheduler::instance().schedule(this, ack_e, delay_);
+		Scheduler::instance().schedule(this, ack_e, (delay_ + 8.0/arq_tx_->get_linkbw()));
 	else
 		handle(ack_e);
 	//---------------------------------//
@@ -832,7 +832,7 @@ void ARQAcker::decode(Handler* h, bool afterCoded){
 	new_ACKEvent->isCancelled = false;
 	ack_e = (Event *)new_ACKEvent;
 	if (delay_ > 0)
-		Scheduler::instance().schedule(this, ack_e, delay_);
+		Scheduler::instance().schedule(this, ack_e, (delay_ + HDR_CMN(new_ACKEvent->coded_ack)->size_ /arq_tx_->get_linkbw()));
 	else
 		handle(ack_e);
 
@@ -866,7 +866,7 @@ Packet* ARQAcker::create_coded_ack(){
 	*(buffer+2) = (cnt_pkts >> 8) & 0xFF;
 	*(buffer+3) = cnt_pkts & 0xFF;
 
-	ch2->size_ = (cnt_pkts+1)*sizeof(int);
+	ch2->size_ = (cnt_pkts+1)*sizeof(int); //one byte for each sequence number and one byte for the counter
 	PacketData *cp_data;
 	cp_data = new PacketData(sizeof(int)*(cnt_pkts+1)); //4 bytes for each decoded frame plus a byte for the counter
 	unsigned char *pointer_to_data;
@@ -976,7 +976,7 @@ void ARQAcker::handle(Event* e)
 	if ( ranvar_->value() < err_rate ){
 		if (rcv_p == NULL){ //a coded ack is not expected so no need to call arq_tx->nack() at the appropriate time
 			if (debug) printf("Acker, handle: ACK for pkt %d is lost.\n", rcv_sn);
-			if (timeout_ - delay_ ==  0) { //if timeout is the same as the time needed for ACK to be delivered then just call nack() instead of ack()
+			if (timeout_ - (delay_ + 8.0/arq_tx_->get_linkbw())==  0) { //if timeout is the same as the time needed for ACK to be delivered then just call nack() instead of ack()
 				arq_tx_->nack(rcv_sn, rcv_uid);
 			} else { //schedule the end of timeout (nack()) since the ACK is lost and the timeout expires later
 				ACKEvent *ACKEvent_helper = new ACKEvent();
@@ -986,7 +986,7 @@ void ARQAcker::handle(Event* e)
 				ACKEvent_helper->coded_ack = NULL;
 				ACKEvent_helper->isCancelled = false;
 				ack_e_helper = (Event *)ACKEvent_helper;
-				Scheduler::instance().schedule(nacker, ack_e_helper, timeout_ - delay_);
+				Scheduler::instance().schedule(nacker, ack_e_helper, timeout_ - (delay_ + 8.0/arq_tx_->get_linkbw()));
 			}
 		} else { //the coded ack is lost, so free
 			if (debug) printf("Acker, handle: Coded ACK is lost.\n");
