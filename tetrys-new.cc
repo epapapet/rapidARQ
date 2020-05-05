@@ -739,6 +739,7 @@ void TetrysAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that r
     //the new coded packet contains none of the old_lost_packets->the window of Tx has moved on, no further coded pkts containing those lost will be received so clean lost as well as coded_packets because decoding will not be possible
     old_lost_packets.clear();
     coded_packets.clear();
+    //TODO: take care of known_packets: if possible clear those packets not needed any more
     intersect.clear();
   }
 
