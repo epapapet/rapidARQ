@@ -145,6 +145,7 @@ public:
 	void deliver_frames(int steps, bool mindgaps, Handler *h);
 	void clean_decoding_matrix(int from, int to);
   void delete_lost_and_associated_coded_from_matrix(int pkt_to_remove);
+  void delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove);
 
  private:
 	Packet* create_coded_ack();
