@@ -1,6 +1,8 @@
 #include "connector.h"
 #include "ranvar.h"
 #include <set>
+#include <map>
+#include <algorithm>
 
 class ARQTx;
 enum ARQStatus {IDLE,SENT,ACKED,RTX,DROP}; //statuses for packets sent by ARQTx
@@ -47,7 +49,7 @@ class ARQTx : public Connector {
 	ARQHandler arqh_;
 	Handler* handler_;
 
-  Packet *pending; //used for storing a native packet from queue that finds the channel blocked_
+	Packet *pending; //used for storing a native packet from queue that finds the channel blocked_
   Packet *coded; //used for storing a coded packet that finds the channel blocked_
 
 	int wnd_;  //window size
@@ -76,8 +78,8 @@ class ARQTx : public Connector {
 	//Statistics
 	double start_time; //time when 1st packet arrived at ARQTx::recv
 	double packets_sent; //unique packets sent
-  double coded_pkts_sent; //total nu,ber of csent coded pkts
-  double pkt_rtxs; //the total number of retransmissions
+	double coded_pkts_sent; //total number of sent coded pkts
+	double pkt_rtxs; //the total number of retransmissions
 
 	int findpos_retrans();
 	void reset_lastacked();
@@ -127,7 +129,7 @@ public:
 	PacketStatus *status; //status of received packets
 	set<int> known_packets; //already correctly received packets
 	set<int> lost_packets; //how many packets are lost
-	int received_coded_cnt; //counter for received coded packets that are available for decoding
+  multimap<int, set<int> > coded_packets; //the received coded pkts that are useful for decoding
 
 	ARQNacker* nacker;
 
@@ -138,11 +140,18 @@ public:
 	double delivered_pkts; //the total number of pkts delivered to the receiver's upper layer
 	double delivered_data; //the total number of bytes delivered to the receiver's upper layer
 	double sum_of_delay; //sum of delays for every packet delivered, used to calculate average delay
-	double avg_dec_matrix_size; //the avg size of the decoding matrix when decoding is performed (used to estimate processing overhead)
+  double sum_of_delay_jitter; //sum of delay jitter for every packet delivered, used to calculate average delay
+  double avg_dec_matrix_size; //the avg size of the decoding matrix when decoding is performed (used to estimate processing overhead)
+  double avg_known_pkts_size; //the avg size of the known_packets when decoding is performed (part of decoding matrix already in diagonal form)
 	double num_of_decodings; //number of decoding operations
+  double max_delay; //the maximum delay experienced by a packet
+  double min_delay; //the minimum delay experienced by a packet
+  double last_delay_sample; //the last delay, used to calculate delay jitter
 
 	void deliver_frames(int steps, bool mindgaps, Handler *h);
 	void clean_decoding_matrix(int from, int to);
+  void delete_lost_and_associated_coded_from_matrix(int pkt_to_remove);
+  void delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove);
 
  private:
 	Packet* create_coded_ack();
