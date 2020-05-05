@@ -143,7 +143,8 @@ public:
 	double num_of_decodings; //number of decoding operations
 
 	void deliver_frames(int steps, bool mindgaps, Handler *h);
-	void clean_decoding_matrix(int from, int to, int whichstruct);
+	void clean_decoding_matrix(int from, int to);
+  void delete_lost_and_associated_coded_from_matrix(int pkt_to_remove);
 
  private:
 	Packet* create_coded_ack();

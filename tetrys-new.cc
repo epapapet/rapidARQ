@@ -419,7 +419,7 @@ int TetrysRx::command(int argc, const char*const* argv)
 	if (argc == 2) {
 		if (strcmp(argv[1], "update-delays") == 0) {
       bool delayNack = false; //bool variable that controls the value assigned to timeout_. If false, keep timeout = delay.
-			delay_ = arq_tx_->get_linkdelay();  //the propagation delay
+			delay_ = arq_tx_->get_linkdelay(); //the propagation delay
       double nack_delay = (arq_tx_->get_codingdepth() * (arq_tx_->get_ratek() + 1) * arq_tx_->get_apppktsize())/arq_tx_->get_linkbw() + arq_tx_->get_linkdelay();
 			timeout_ = (delayNack == false) ? (delay_ + 8.0/arq_tx_->get_linkbw()): nack_delay;
 			return(TCL_OK);
@@ -530,6 +530,8 @@ void TetrysAcker::recv(Packet* p, Handler* h)
 	bool within_fww = ((fw_dis <= wnd_) && (fw_dis > 0)) ? (true) : (false); //bool to indicate whether the new frame is within forward window or not
 	int bw_dis = (most_recent_acked - seq_num + sn_cnt)%sn_cnt; //distance of the most recently acked seq_num from the received seq_num
 	bool within_bww = (bw_dis < wnd_) ? (true) : (false); //bool to indicate whether the new frame is (or not) within the TetrysTx's active window as seen by TetrysRx (backward window)
+	int oldest_sq_sender = (most_recent_acked - wnd_ + 1 + sn_cnt)%sn_cnt; //the lower bound of TetrysTx's active window as seen by TetrysRx before receiving seq_num
+	int new_oldest_sq_sender = (seq_num - wnd_ + 1 + sn_cnt)%sn_cnt; //the lower bound of TetrysTx's active window as seen by TetrysRx after receiving seq_num
 
 	int nxt_seq = (last_fwd_sn_ + 1)%sn_cnt; //the next expected seq_num
 
@@ -572,6 +574,7 @@ void TetrysAcker::recv(Packet* p, Handler* h)
 		if (fw_dis > fw_width) { //the new frames is beyond the most_recent_acked
 			for (int i = (most_recent_acked + 1)%sn_cnt; i != seq_num; i = (i + 1)%sn_cnt){ status[i%wnd_] = MISSING; } //update positions in between with MISSING state
 			most_recent_acked = seq_num;
+			clean_decoding_matrix(oldest_sq_sender, new_oldest_sq_sender); //remove from the coding structures the frames that are now out of TetrysTx's active window
 		}
 
 	} else if (within_bww && !within_fww) {//frame belongs to the backward window (i.e., TetrysTx's active window), so it is a retransmitted frame due to loss of ACK
@@ -593,6 +596,7 @@ void TetrysAcker::recv(Packet* p, Handler* h)
 		deliver_frames(wnd_, true, h); //check if it is possible to deliver in order frames
 		for (int i = (most_recent_acked + 1)%sn_cnt; i != seq_num; i = (i + 1)%sn_cnt){ status[i%wnd_] = MISSING; } //update positions between most_recent_acked and the new sequence number with MISSING state
 		most_recent_acked = seq_num;
+		clean_decoding_matrix(oldest_sq_sender, new_oldest_sq_sender); //remove from the coding structures the frames that are now out of TetrysTx's active window
 	}
 
 	//-----Schedule ACK----------------//
@@ -611,7 +615,7 @@ void TetrysAcker::recv(Packet* p, Handler* h)
 
 	if (should_check_for_decoding){ //check if decoding is now possible due to the reception of the new pkt (if it is a retransmitted one)
 		known_packets.insert(seq_num); //Update data for decoding
-		lost_packets.erase(seq_num); //Update data for decoding
+		delete_lost_and_associated_coded_from_matrix(seq_num); //Update data for decoding
 		decode(h, false); //Check if decoding is now possible
 	}
 
@@ -672,6 +676,9 @@ void TetrysAcker::print_stats()
 
 void TetrysAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that reads a coded packet and update the list with known packets
 
+  set<int> intersect;
+  set<int> old_lost_packets = lost_packets;
+  lost_packets.clear();
   set<int> coded_pkt_contents; //used to store the contents of the coded pkt
 
 	if (debug) {
@@ -726,24 +733,22 @@ void TetrysAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that r
 	}
 	if (debug) printf(".\n");
 
-  if (coded_packets.size() == 0) { //no other coded pkt stored, only need to clean known_packets, this does not affect the detection of lost_packets
-    //set<int>::iterator it_known = known_packets.begin();
-    set<int> intersect;
-    set_intersection(known_packets.begin(),known_packets.end(),coded_pkt_contents.begin(),coded_pkt_contents.end(), std::inserter(intersect,intersect.begin()));
-    known_packets.clear();
-    known_packets = intersect;
+  set_intersection(old_lost_packets.begin(),old_lost_packets.end(),coded_pkt_contents.begin(),coded_pkt_contents.end(), std::inserter(intersect,intersect.begin())); //take the intersection between coded_pkt_contents and old_lost_packets
+
+  if (intersect.size() == 0) {
+    //the new coded packet contains none of the old_lost_packets->the window of Tx has moved on, no further coded pkts containing those lost will be received so clean lost as well as coded_packets
+    old_lost_packets.clear();
+    coded_packets.clear();
     intersect.clear();
-    //clean_decoding_matrix (*(it_known), first_read_sq, 1); //clean based on oldest sq contained in newly received coded pkt
   }
 
-  if (lost_packets.size() != 0) { //need to store coded pkt, coded_packets may be empty of non empty before adding the new coded pkt
+  if (lost_packets.size() != 0) { //at least one lost pkt is contained in the coded packet so store it
+
+    set_union(lost_packets.begin(),lost_packets.end(),old_lost_packets.begin(),old_lost_packets.end(), std::inserter(intersect,intersect.begin())); //take the intersection between coded_pkt_contents and lost_packets
+    lost_packets = intersect; intersect.clear(); old_lost_packets.clear();
+    set<int>::iterator mmiter;
+    //printf("parse, adding coded pkt %d. ", first_read_sq); printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = known_packets.begin(); mmiter != known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n");
     coded_packets.insert(pair<int, set<int> >(first_read_sq, coded_pkt_contents)); //store new coded pkt
-  }
-
-  if (coded_packets.size() != 0) { //need to update structures based on the lowest end of tbe coding window indentified through the new coded pkt
-    multimap<int, set<int>>::iterator it_coded = coded_packets.begin(); //get the coded pkt containing the oldest sq
-    int previous_smallest_sq_in_coded_pkts = it_coded->first; //get the oldest sq in stored coded pkts
-    if (previous_smallest_sq_in_coded_pkts != first_read_sq) clean_decoding_matrix (previous_smallest_sq_in_coded_pkts, first_read_sq, 2); //clean structures based on the new oldest sq
   }
 
   coded_pkt_contents.clear(); //delete contents of coded pkt, no more needed
@@ -771,7 +776,7 @@ void TetrysAcker::decode(Handler* h, bool afterCodedreception){
 	if (!decoding_is_possible) return;
 
 
-	int fw_dis, fw_width, bw_dis, nxt_seq, first_st;
+	int fw_dis, fw_width, bw_dis, oldest_sq_sender, new_oldest_sq_sender, nxt_seq, first_st;
 	bool within_fww, within_bww;
 
 	set<int>:: iterator it;
@@ -789,6 +794,8 @@ void TetrysAcker::decode(Handler* h, bool afterCodedreception){
 		within_fww = ((fw_dis <= wnd_) && (fw_dis > 0)) ? (true) : (false);
 		bw_dis = (most_recent_acked - lost_sn + sn_cnt)%sn_cnt;
 		within_bww = (bw_dis < wnd_) ? (true) : (false);
+    oldest_sq_sender = (most_recent_acked - wnd_ + 1 + sn_cnt)%sn_cnt;
+		new_oldest_sq_sender = (lost_sn - wnd_ + 1 + sn_cnt)%sn_cnt;
 		nxt_seq = (last_fwd_sn_ + 1)%sn_cnt;
 
 		if (within_fww){ //decoded frame is in the forward window
@@ -813,6 +820,7 @@ void TetrysAcker::decode(Handler* h, bool afterCodedreception){
 			if (fw_dis > fw_width) { //if the decoded frame is beyond the most_recent_acked
 				for (int j = (most_recent_acked + 1)%sn_cnt; j != lost_sn; j = (j + 1)%sn_cnt){ status[j%wnd_] = MISSING; } //updtae the positions in between with the MISSING state
 				most_recent_acked = lost_sn;
+				clean_decoding_matrix(oldest_sq_sender, new_oldest_sq_sender); //remove from the coding structures the frames that are now outside the backward window (i.e., TetrysTx's active window)
 			}
 		} else if (within_bww && !within_fww){ //decode frame is in the backward window, so do nothing beyond ACKing the frame
 
@@ -825,6 +833,7 @@ void TetrysAcker::decode(Handler* h, bool afterCodedreception){
 			deliver_frames(wnd_, true, h); //check if it is possible to deliver in order frames
 			for (int j = (most_recent_acked + 1)%sn_cnt; j != lost_sn; j = (j + 1)%sn_cnt){ status[j%wnd_] = MISSING; } //update positions beyond most_recent_acked up to the decoded frame with the MISSING state
 			most_recent_acked = lost_sn;
+			clean_decoding_matrix(oldest_sq_sender, new_oldest_sq_sender); //remove from the coding structures the frames that are now outside the backward window (i.e., TetrysTx's active window)
 		}
 	}
 
@@ -885,47 +894,50 @@ Packet* TetrysAcker::create_coded_ack(){
 } //end of create_coded_ack
 
 
-void TetrysAcker::clean_decoding_matrix(int from, int to, int whichstruct)
+void TetrysAcker::clean_decoding_matrix(int from, int to)
 {
 
-  multimap<int, set<int>>::iterator itcodedpkts;
-  int deleted_lost_pkt = false;
-	int deleted_lost_pkts_cnt = 0;
 	int runner_ = from;
 	do {
-		if (whichstruct == 1) known_packets.erase(runner_);
-		if (whichstruct == 2) {
-      deleted_lost_pkt = lost_packets.erase(runner_);
-      deleted_lost_pkts_cnt = deleted_lost_pkts_cnt + deleted_lost_pkt;
-      if (deleted_lost_pkt > 0){ //delete all coded pkts containing the deleted lost pkt and update the known_packets based on the remaining coded
+		known_packets.erase(runner_);
+    delete_lost_and_associated_coded_from_matrix(runner_);
 
-        for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){ //iterate coded_packets
-            int erase_coded_cnt = (itcodedpkts->second).erase(runner_); //if delete lost is in coded pkt erase_coded_cnt > 0
-            if (erase_coded_cnt > 0){ //coded pkt contains deleted lost
-                (itcodedpkts->second).clear(); //clear contents of coded pkt
-                coded_packets.erase(itcodedpkts); //delete coded pkt
-            }
-        } // done cleaning coded_pkts
-
-      }
-    }
-
-    deleted_lost_pkt = 0;
 		runner_ = (runner_ + 1)%sn_cnt;
 	} while (runner_ != to);
 
-  if ((deleted_lost_pkts_cnt > 0) && (whichstruct == 2)){ //coded packets where deleted so update known_packets
-
-    itcodedpkts = coded_packets.begin(); //get the coded pkt containing the oldest sq
-    int to_new = itcodedpkts->first;
-    runner_ = from;
-    do {
-      known_packets.erase(runner_);
-      runner_ = (runner_ + 1)%sn_cnt;
-    } while (runner_ != to_new);
-  }
-
 } //end of clean_decoding_matrix
+
+void TetrysAcker::delete_lost_and_associated_coded_from_matrix(int pkt_to_remove)
+{
+
+  multimap<int, set<int>>::iterator itcodedpkts;
+  set<int>::iterator mmiter;
+  set<int> intersect;
+
+  int deleted_lost_pkt = false;
+
+  deleted_lost_pkt = lost_packets.erase(pkt_to_remove);
+  if (deleted_lost_pkt > 0){ //delete all coded pkts containing the deleted lost pkt and update the known_packets based on the remaining coded
+    //printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = known_packets.begin(); mmiter != known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Num of coded pkts = %d. Lost pkt deleted is %d.\n", (int)coded_packets.size(), pkt_to_remove);
+    for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){ //iterate coded_packets
+        //printf("Coded pkt %d:", itcodedpkts->first); for (mmiter = (itcodedpkts->second).begin(); mmiter != (itcodedpkts->second).end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf(".\n");
+        int erase_coded_cnt = (itcodedpkts->second).erase(pkt_to_remove); //if delete lost is in coded pkt erase_coded_cnt > 0
+        if (erase_coded_cnt > 0){ //coded pkt contains deleted lost
+            (itcodedpkts->second).clear(); //clear contents of coded pkt
+            coded_packets.erase(itcodedpkts); //delete coded pkt
+            //printf("Coded pkt is deleted.\n");
+        } else {
+          set_intersection(lost_packets.begin(),lost_packets.end(),(itcodedpkts->second).begin(),(itcodedpkts->second).end(), std::inserter(intersect,intersect.begin()));
+          if (intersect.size() == 0) {abort();}
+          intersect.clear();
+        }
+    } // done cleaning coded_pkts
+    //printf("The remaining coded_pkts are %d.\n", (int)coded_packets.size());
+  } //done with this deleted lost packet
+
+
+} //end of delete_lost_and_associated_coded_from_matrix
+
 
 void TetrysAcker::delete_nack_event(int seq_num){
 	event_buf[seq_num] = NULL;
