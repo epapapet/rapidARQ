@@ -935,6 +935,7 @@ void TetrysAcker::delete_lost_and_associated_coded_from_matrix(int pkt_to_remove
 {
 
   multimap<int, set<int>>::iterator itcodedpkts;
+  multimap<int, set<int>> temp_coded;
   set<int>::iterator mmiter;
   set<int> intersect;
 
@@ -943,17 +944,19 @@ void TetrysAcker::delete_lost_and_associated_coded_from_matrix(int pkt_to_remove
     //printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = known_packets.begin(); mmiter != known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Num of coded pkts = %d. Lost pkt deleted is %d.\n", (int)coded_packets.size(), pkt_to_remove);
     for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
         //printf("Coded pkt %d:", itcodedpkts->first); for (mmiter = (itcodedpkts->second).begin(); mmiter != (itcodedpkts->second).end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf(".\n");
-        int erase_coded_cnt = (itcodedpkts->second).erase(pkt_to_remove); //if deleted lost is in coded pkt erase_coded_cnt > 0
+        int erase_coded_cnt = (itcodedpkts->second).count(pkt_to_remove); //if deleted lost is in coded pkt erase_coded_cnt > 0
         if (erase_coded_cnt > 0){ //coded pkt contains the deleted lost one
-            (itcodedpkts->second).clear(); //clear contents of coded pkt
-            coded_packets.erase(itcodedpkts); //delete coded pkt
-            //printf("Coded pkt is deleted.\n");
+          //printf("Coded pkt is deleted.\n");
         } else { // this only serves as a diagnostic: every other coded pkt should contain at least one lost packet
           set_intersection(lost_packets.begin(),lost_packets.end(),(itcodedpkts->second).begin(),(itcodedpkts->second).end(), std::inserter(intersect,intersect.begin()));
-          if (intersect.size() == 0) {abort();}
+          if (intersect.size() == 0) {fprintf(stderr, "Error at TetrysRx::delete_lost_and_associated_coded_from_matrix, found coded pkt that does contain any lost pkt.\n"); abort();}
           intersect.clear();
+          temp_coded.insert(pair<int, set<int> >(itcodedpkts->first, itcodedpkts->second));
         }
     } // done cleaning coded_pkts
+    coded_packets.clear();
+    coded_packets = temp_coded;
+    temp_coded.clear();
     //printf("The remaining coded_pkts are %d.\n", (int)coded_packets.size());
   } //done with this deleted lost packet
 
@@ -963,6 +966,7 @@ void TetrysAcker::delete_lost_and_associated_coded_from_matrix(int pkt_to_remove
 void TetrysAcker::delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove)
 {
   multimap<int, set<int>>::iterator itcodedpkts;
+  multimap<int, set<int>> temp_coded;
   set<int>::iterator mmiter;
   set<int> intersect;
 
@@ -974,12 +978,19 @@ void TetrysAcker::delete_lost_and_find_associated_coded_in_matrix(int pkt_to_rem
         int exists_in_coded_cnt = (itcodedpkts->second).count(pkt_to_remove); //if deleted lost is in coded pkt exists_in_coded_cnt > 0
         if (exists_in_coded_cnt != 0){ //coded pkt contains the lost pkt turned to known, so check if coded contains at least one other lost
           set_intersection(lost_packets.begin(),lost_packets.end(),(itcodedpkts->second).begin(),(itcodedpkts->second).end(), std::inserter(intersect,intersect.begin()));
-          if (intersect.size() == 0) {
-            coded_packets.erase(itcodedpkts); //delete coded pkt
+          if (intersect.size() == 0) { //coded pkt does not contain at least one other lost pkt
+            //printf("Coded pkt is deleted.\n");
+          } else { //coded pkt contains at least one other lost pkt
+            temp_coded.insert(pair<int, set<int> >(itcodedpkts->first, itcodedpkts->second));
           }
           intersect.clear();
+        } else { //coded pkt does not contain the deleted lost pkt
+          temp_coded.insert(pair<int, set<int> >(itcodedpkts->first, itcodedpkts->second));
         }
     } // done cleaning coded_pkts
+    coded_packets.clear();
+    coded_packets = temp_coded;
+    temp_coded.clear();
     //printf("The remaining coded_pkts are %d.\n", (int)coded_packets.size());
   } //done with this deleted lost packet
 } //end of delete_lost_and_find_associated_coded_in_matrix
