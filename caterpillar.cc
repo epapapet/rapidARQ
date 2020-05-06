@@ -696,6 +696,7 @@ void CaterpillarAcker::print_stats()
 void CaterpillarAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that reads a coded packet and update the list with known packets
 
   set<int> intersect;
+  set<int> unionset;
   set<int> old_lost_packets = lost_packets; //keep a copy of lost_packets before adding new ones
   lost_packets.clear();
   set<int> coded_pkt_contents; //used to store the contents of the coded pkt
@@ -764,8 +765,8 @@ void CaterpillarAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function t
 
   if (lost_packets.size() != 0) { //at least one lost pkt is contained in the coded packet so store it
 
-    set_union(lost_packets.begin(),lost_packets.end(),old_lost_packets.begin(),old_lost_packets.end(), std::inserter(intersect,intersect.begin())); //take the intersection between coded_pkt_contents and lost_packets
-    lost_packets = intersect; intersect.clear(); old_lost_packets.clear();
+    set_union(lost_packets.begin(),lost_packets.end(),old_lost_packets.begin(),old_lost_packets.end(), std::inserter(unionset,unionset.begin())); //take the intersection between coded_pkt_contents and lost_packets
+    lost_packets = unionset; unionset.clear(); old_lost_packets.clear();
     //set<int>::iterator mmiter;
     //printf("parse, adding coded pkt %d. ", first_read_sq); printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = known_packets.begin(); mmiter != known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n");
     coded_packets.insert(pair<int, set<int> >(first_read_sq, coded_pkt_contents)); //store new coded pkt
