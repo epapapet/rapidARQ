@@ -705,6 +705,7 @@ void ARQAcker::print_stats()
 void ARQAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that reads a coded packet and update the list with known packets
 
   set<int> intersect;
+  set<int> known_intersect;
   set<int> unionset;
   set<int> old_lost_packets = lost_packets; //keep a copy of lost_packets before adding new ones
   lost_packets.clear();
@@ -768,8 +769,7 @@ void ARQAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that read
     //the new coded packet contains none of the old_lost_packets->the window of Tx has moved on, no further coded pkts containing those lost will be received so clean lost as well as coded_packets because decoding will not be possible
     old_lost_packets.clear();
     coded_packets.clear();
-    //TODO: take care of known_packets: if possible clear those packets not needed any more
-    intersect.clear();
+    //intersect.clear();
   }
 
   if (lost_packets.size() != 0) { //at least one lost pkt is contained in the coded packet so store it
@@ -781,9 +781,17 @@ void ARQAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that read
     coded_packets.insert(pair<int, set<int> >(first_read_sq, coded_pkt_contents)); //store new coded pkt
   }
 
-  coded_pkt_contents.clear(); //delete contents of coded pkt, no more needed
-
 	decode(h,true);
+
+  if ((intersect.size() == 0) || (coded_packets.size() == 0)){
+    //If the received coded pkt reset the lost_packets and coded_packets polls or if a decoding occured we need to reset known_packets
+    //to the known packets existing in the contents of the received coded pkt
+    //All future coded pkts will contain known_packets with greater seq_nums
+    set_intersection(known_packets.begin(),known_packets.end(),coded_pkt_contents.begin(),coded_pkt_contents.end(), std::inserter(known_intersect,known_intersect.begin())); //take the intersection between coded_pkt_contents and known_packets
+    known_packets.clear(); known_packets = known_intersect; known_intersect.clear();
+  }
+  coded_pkt_contents.clear(); //delete contents of coded pkt, no more needed
+  intersect.clear();
 	Packet::free(cp);  //free coded packet, no more needed
 
 } //end of parse_coded_packet
@@ -931,27 +939,27 @@ Packet* ARQAcker::create_coded_ack(){
 
 void ARQAcker::clean_decoding_matrix(int from, int to)
 {
-
 	int runner_ = from;
 	do {
-		known_packets.erase(runner_); //TODO: if deleted known pkt is in at least one coded pkt we should not delete
+		delete_known_from_matrix(runner_); //delete known pkt only if it is not contained in any stored coded one
     delete_lost_and_associated_coded_from_matrix(runner_); //delete lost pkt and also all coded containing this packet
-
 		runner_ = (runner_ + 1)%sn_cnt;
 	} while (runner_ != to);
-
 } //end of clean_decoding_matrix
 
 void ARQAcker::delete_lost_and_associated_coded_from_matrix(int pkt_to_remove)
 {
-
+  //Should delete a lost_packet that is now out of the sender's coding window, so no more subsequent coded pkts will contain it
+  //In doing so we also need to delete all coded pkts containing the deleted lost pkt because they will no be usefull for decodings
+  //We do not need to update known_packets: we could delete known_packets that are only contained in the deleted coded ones but
+  //the impact in reducing the size of known_packets will be minimal and processing overhead high
   multimap<int, set<int>>::iterator itcodedpkts;
   multimap<int, set<int>> temp_coded;
   set<int>::iterator mmiter;
   set<int> intersect;
 
   int deleted_lost_pkt = lost_packets.erase(pkt_to_remove);
-  if (deleted_lost_pkt > 0){ //delete all coded pkts containing the deleted lost pkt, TODO: update the known_packets based on the remaining coded
+  if (deleted_lost_pkt > 0){
     //printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = known_packets.begin(); mmiter != known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Num of coded pkts = %d. Lost pkt deleted is %d.\n", (int)coded_packets.size(), pkt_to_remove);
     for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
         //printf("Coded pkt %d:", itcodedpkts->first); for (mmiter = (itcodedpkts->second).begin(); mmiter != (itcodedpkts->second).end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf(".\n");
@@ -970,19 +978,22 @@ void ARQAcker::delete_lost_and_associated_coded_from_matrix(int pkt_to_remove)
     temp_coded.clear();
     //printf("The remaining coded_pkts are %d.\n", (int)coded_packets.size());
   } //done with this deleted lost packet
-
 } //end of delete_lost_and_associated_coded_from_matrix
 
 
 void ARQAcker::delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove)
 {
+  //Should delete a lost_packet that turned into known (through a retransmission)
+  //In doing so we also need to delete all coded pkts containing only this lost_packet because they are no more usefull in decodings
+  //We do not need to update known_packets: we could delete known_packets that are only contained in the deleted coded ones but
+  //the impact in reducing the size of known_packets will be minimal and processing overhead high
   multimap<int, set<int>>::iterator itcodedpkts;
   multimap<int, set<int>> temp_coded;
   set<int>::iterator mmiter;
   set<int> intersect;
 
   int deleted_lost_pkt = lost_packets.erase(pkt_to_remove);
-  if (deleted_lost_pkt > 0){ //find if an exist coded pkt contained only the deleted lost pkt and if so delete coded, TODO: update the known_packets based on the remaining coded
+  if (deleted_lost_pkt > 0){
     //printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = known_packets.begin(); mmiter != known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Num of coded pkts = %d. Lost pkt deleted is %d.\n", (int)coded_packets.size(), pkt_to_remove);
     for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
         //printf("Coded pkt %d:", itcodedpkts->first); for (mmiter = (itcodedpkts->second).begin(); mmiter != (itcodedpkts->second).end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf(".\n");
@@ -1005,6 +1016,18 @@ void ARQAcker::delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove
     //printf("The remaining coded_pkts are %d.\n", (int)coded_packets.size());
   } //done with this deleted lost packet
 } //end of delete_lost_and_find_associated_coded_in_matrix
+
+void ARQAcker::delete_known_from_matrix(int pkt_to_remove){
+  //Should delete a known_packet that is now out of the sender's coding window, so no more subsequent coded pkts will contain it
+  //The deletion will take place only if this packet is not involved in a stored coded packet, in which case it is needed for decoding
+  multimap<int, set<int>>::iterator itcodedpkts;
+  int should_delete = 0;
+  for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
+    should_delete = (itcodedpkts->second).count(pkt_to_remove);
+    if (should_delete > 0) return;
+  }
+  known_packets.erase(pkt_to_remove);
+} //end of delete_known_from_matrix
 
 void ARQAcker::delete_nack_event(int seq_num){
 	event_buf[seq_num] = NULL;
