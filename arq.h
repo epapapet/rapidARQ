@@ -144,6 +144,7 @@ public:
   double avg_dec_matrix_size; //the avg size of the decoding matrix when decoding is performed (used to estimate processing overhead)
   double avg_known_pkts_size; //the avg size of the known_packets when decoding is performed (part of decoding matrix already in diagonal form)
 	double num_of_decodings; //number of decoding operations
+  double avg_pkts_per_decoding; //the average number of decoded packets per decoding
   double max_delay; //the maximum delay experienced by a packet
   double min_delay; //the minimum delay experienced by a packet
   double last_delay_sample; //the last delay, used to calculate delay jitter

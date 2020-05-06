@@ -463,6 +463,7 @@ CaterpillarAcker::CaterpillarAcker()
 	avg_dec_matrix_size = 0; //the avg size of the decoding matrix when decoding is performed (used to estimate processing overhead)
   avg_known_pkts_size = 0; //the avg size of the known_packets when decoding is performed (part of decoding matrix already in diagonal form)
 	num_of_decodings = 0; //number of decoding operations
+  avg_pkts_per_decoding = 0; //the average number of decoded packets per decoding
   max_delay = 0; //the maximum delay experienced by a packet
   min_delay = 100000000000; //the minimum delay experienced by a packet
   last_delay_sample = 0; //the last delay, used to calculate delay jitter
@@ -665,32 +666,33 @@ void CaterpillarAcker::deliver_frames(int steps, bool mindgaps, Handler *h)
 
 void CaterpillarAcker::print_stats()
 {
-  printf("\n//--------------- STATISTICS ---------------//\n");
-	printf("Start time (sec):\t\t%f\n", arq_tx_->get_start_time());
-	printf("Finish time (sec):\t\t%f\n", finish_time);
+  printf("\n//------------ STATS FOR CATERPILLAR --------------//\n");
+	printf("Start time (sec):\t\t\t%f\n", arq_tx_->get_start_time());
+	printf("Finish time (sec):\t\t\t%f\n", finish_time);
 
-	printf("Total number of delivered pkts:\t%.0f\n", delivered_pkts);
-	printf("Delivered data (in mega bytes):\t%.3f\n", delivered_data/1048576);
+	printf("Total number of delivered pkts:\t\t%.0f\n", delivered_pkts);
+	printf("Delivered data (in mega bytes):\t\t%.3f\n", delivered_data/1048576);
   if (delivered_pkts == 0) {finish_time = Scheduler::instance().clock();} //hack for the case that deliver_frames is not called
 	double throughput = (delivered_data * 8) / (finish_time - arq_tx_->get_start_time());
-	printf("Total throughput (Mbps):\t%f\n", throughput * 1.0e-6);
+	printf("Total throughput (Mbps):\t\t%f\n", throughput * 1.0e-6);
 
-	printf("Unique packets sent:\t\t%.0f\n", arq_tx_->get_total_packets_sent());
-  printf("Coded packets sent:\t\t%.0f\n", arq_tx_->get_total_coded_packets_sent());
+	printf("Unique packets sent:\t\t\t%.0f\n", arq_tx_->get_total_packets_sent());
+  printf("Coded packets sent:\t\t\t%.0f\n", arq_tx_->get_total_coded_packets_sent());
   double mean = (delivered_pkts == 0) ? (0.0) : (sum_of_delay / delivered_pkts);
-	printf("Mean delay (msec):\t\t%f\n", mean * 1.0e+3);
-  printf("Maximum delay (msec):\t\t%f\n", max_delay * 1.0e+3);
-  printf("Minimum delay (msec):\t\t%f\n", min_delay * 1.0e+3);
+	printf("Mean delay (msec):\t\t\t%f\n", mean * 1.0e+3);
+  printf("Maximum delay (msec):\t\t\t%f\n", max_delay * 1.0e+3);
+  printf("Minimum delay (msec):\t\t\t%f\n", min_delay * 1.0e+3);
   double meanjitter = (delivered_pkts <= 1) ? (0.0) : (sum_of_delay_jitter / (delivered_pkts -1));
-	printf("Mean delay jitter (msec):\t%f\n", meanjitter * 1.0e+3);
+	printf("Mean delay jitter (msec):\t\t%f\n", meanjitter * 1.0e+3);
   double avg_rtxs = arq_tx_->get_total_retransmissions() / arq_tx_->get_total_packets_sent();
-	printf("Avg num of retransmissions:\t%f\n", avg_rtxs);
-	printf("Packet loss rate:\t\t%f\n", 1 - (delivered_pkts / arq_tx_->get_total_packets_sent()));
+	printf("Avg num of retransmissions:\t\t%f\n", avg_rtxs);
+	printf("Packet loss rate:\t\t\t%f\n", 1 - (delivered_pkts / arq_tx_->get_total_packets_sent()));
 
-	printf("Number of actual decodings:\t%.0f\n", num_of_decodings);
-	printf("Average decoding matrix size:\t%f\n", ( (num_of_decodings == 0) ? (0) : (avg_dec_matrix_size / num_of_decodings) ));
-  printf("Average size of known_packets:\t%f\n", ( (num_of_decodings == 0) ? (0) : (avg_known_pkts_size / num_of_decodings) ));
-  printf("//------------------------------------------//\n");
+	printf("Number of actual decodings:\t\t%.0f\n", num_of_decodings);
+  printf("Avg num of decoded pkts per decoding:\t%f\n", (num_of_decodings == 0) ? (0):(avg_pkts_per_decoding / num_of_decodings));
+	printf("Average decoding matrix size:\t\t%f\n", ( (num_of_decodings == 0) ? (0) : (avg_dec_matrix_size / num_of_decodings) ));
+  printf("Average size of known_packets:\t\t%f\n", ( (num_of_decodings == 0) ? (0) : (avg_known_pkts_size / num_of_decodings) ));
+  printf("//-------------------------------------------------//\n");
 } //end of print_stats
 
 void CaterpillarAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that reads a coded packet and update the list with known packets
@@ -789,6 +791,7 @@ void CaterpillarAcker::decode(Handler* h, bool afterCodedreception){
 			avg_dec_matrix_size = avg_dec_matrix_size + (int) lost_packets.size() + (int) known_packets.size();
       avg_known_pkts_size = avg_known_pkts_size + (int) known_packets.size();
 			num_of_decodings ++;
+      avg_pkts_per_decoding = avg_pkts_per_decoding + lost_packets.size();
 	}
 	if ((!decoding_is_possible) && (!afterCodedreception)) return; //no need to decode and no need to send ack
 
