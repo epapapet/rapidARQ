@@ -84,7 +84,7 @@ int CaterpillarTx::command(int argc, const char*const* argv)
 			pkt_uids = new int[wnd_]; //buffer for storing the uids of pending frames: used only for diagnostic purposes
 			for(int i=0; i<wnd_; i++){ pkt_buf[i] = NULL; status[i] = IDLE; num_rtxs[i] = 0; pkt_uids[i]=-1; }
 			rate_k = atoi(argv[3]);
-	        coding_depth = atoi(argv[4]);			
+	        coding_depth = atoi(argv[4]);
 			if (rate_k == 0){
 				rate_k = 2147483647; //i.e., deactivate coding
 			}
@@ -177,7 +177,7 @@ Packet* CaterpillarTx::create_coded_packet(){ //create a new coded packet with s
 	int runner_ = ((last_acked_sq_+1)%sn_cnt)%wnd_;
 	int cnt_pkts = 0;
 	do {
-		if(status[runner_] != DROP){ //We should consider which packets to include in an encoded packet. For example, should we incude RTX or ACKED pkts?
+		if((status[runner_] != DROP) && (status[runner_] != ACKED)){ //should not include DROPPED pkts, no need to include ACKED pkts
 			hdr_cmn *ch = HDR_CMN(pkt_buf[runner_]);
 			*(buffer+sizeof(int)*(cnt_pkts+1)) =  (ch->opt_num_forwards_ >> 24) & 0xFF;
 			*(buffer+sizeof(int)*(cnt_pkts+1)+1) = (ch->opt_num_forwards_ >> 16) & 0xFF;

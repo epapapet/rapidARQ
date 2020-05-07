@@ -185,7 +185,7 @@ Packet* ARQTx::create_coded_packet(){ //create a new coded packet with seq nums 
   //printf("MR: %d, LA: %d, FED: %d, runner: %d.\n", most_recent_sq_, last_acked_sq_, far_end_diff, fakerunner_);fflush(stdout);
 	int cnt_pkts = 0;
 	do {
-		if(status[runner_] != DROP){ //We should consider which packets to include in an encoded packet. For example, should we incude RTX or ACKED pkts?
+		if((status[runner_] != DROP) && (status[runner_] != ACKED)){ //should not include DROPPED pkts, no need to include ACKED pkts
 			hdr_cmn *ch = HDR_CMN(pkt_buf[runner_]);
 			*(buffer+sizeof(int)*(cnt_pkts+1)) =  (ch->opt_num_forwards_ >> 24) & 0xFF;
 			*(buffer+sizeof(int)*(cnt_pkts+1)+1) = (ch->opt_num_forwards_ >> 16) & 0xFF;
