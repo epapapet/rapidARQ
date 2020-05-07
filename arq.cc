@@ -42,16 +42,15 @@ ARQTx::ARQTx() : arqh_(*this)
 
 	blocked_ = 0; //used to check whethet the channel is occupied with a transmission
 	pending = NULL; //used to store a frame that arrives from the outgoing queue and finds the channel blocked
+  coded = NULL; //used for storing a coded packet that finds the channel blocked_
 	handler_ = 0; //pointer to the outgoing queue (upstream object)
 
 	retry_limit_ = 0; //number of retransmisions allowed per frame
 	bind("retry_limit_", &retry_limit_);
 	num_pending_retrans_ = 0; //number of retransmissions scheduled and pending in ARQTx
 
-	rate_k = 0;
-	bind("rate_k", &rate_k); //the number of native frames before the creation of a coded one
-	coding_depth = 0;
-	bind("coding_depth", &coding_depth); //the number of coding cycles used to create a coded frame
+	rate_k = 0; //the number of native frames before the creation of a coded one
+	coding_depth = 0; //the number of coding cycles used to create a coded frame
   coding_wnd = 0;
 	lnk_bw_ = 10000000;
 	bind("lnk_bw_", &lnk_bw_);
@@ -65,22 +64,19 @@ ARQTx::ARQTx() : arqh_(*this)
 
 	start_time = -1; //time when 1st packet arrived at ARQTx::recv
 	packets_sent = 0; //unique packets sent
-  coded_pkts_sent = 0; ////total nu,ber of csent coded pkts
+  coded_pkts_sent = 0; //total number of sent coded pkts
   pkt_rtxs = 0; //the total number of pkt retransmissions
 } //end of constructor
 
 int ARQTx::command(int argc, const char*const* argv)
 {
 	Tcl& tcl = Tcl::instance();
-	if (argc == 3) {
+  if (argc == 5) {
 		if (strcmp(argv[1], "setup-wnd") == 0) {
 			if (*argv[2] == '0') {
 				tcl.resultf("Cannot setup NULL wnd\n");
 				return(TCL_ERROR);
 			}
-      if (rate_k == 0){
-        rate_k = 2147483647; //i.e., deactivate coding
-      }
 			wnd_ = atoi(argv[2]);
 			sn_cnt = 4 * wnd_; //although 2*wnd_ is enough, we use 4*wnd_ or more to tackle the case that ARQTx drops packets and advances its window without ARQRx knowing
 			pkt_buf = new Packet* [wnd_]; //buffer for storing pending frames
@@ -88,6 +84,11 @@ int ARQTx::command(int argc, const char*const* argv)
 			num_rtxs = new int[wnd_]; //the number of retransmissions executed for each frame
 			pkt_uids = new int[wnd_]; //buffer for storing the uids of pending frames: used only for diagnostic purposes
 			for(int i=0; i<wnd_; i++){ pkt_buf[i] = NULL; status[i] = IDLE; num_rtxs[i] = 0; pkt_uids[i]=-1; }
+      rate_k = atoi(argv[3]);
+      coding_depth = atoi(argv[4]);
+      if (rate_k == 0){
+        rate_k = 2147483647; //i.e., deactivate coding
+      }
       coding_wnd = (coding_depth == 0) ? (wnd_) : (coding_depth * rate_k);
       if (coding_wnd > wnd_) {
         tcl.resultf("The product coding_depth*rate_k should not exceed wnd\n");
@@ -566,7 +567,7 @@ void ARQAcker::recv(Packet* p, Handler* h)
 			finish_time = Scheduler::instance().clock();
 			delivered_data += ch->size_;
 			delivered_pkts++;
-      if (last_delay_sample != 0.0) sum_of_delay_jitter = sum_of_delay_jitter + abs(Scheduler::instance().clock() - ch->ts_arr_ - last_delay_sample);
+      if (last_delay_sample != 0.0) sum_of_delay_jitter = sum_of_delay_jitter + fabs(Scheduler::instance().clock() - ch->ts_arr_ - last_delay_sample);
       last_delay_sample = Scheduler::instance().clock() - ch->ts_arr_;
       if (last_delay_sample > max_delay) max_delay = last_delay_sample;
       if (last_delay_sample < min_delay) min_delay = last_delay_sample;
@@ -654,7 +655,7 @@ void ARQAcker::deliver_frames(int steps, bool mindgaps, Handler *h)
 			finish_time = Scheduler::instance().clock();
 			delivered_data += (HDR_CMN(pkt_buf[((last_fwd_sn_+1)%sn_cnt)%wnd_]))->size_;
 			delivered_pkts++;
-      if (last_delay_sample != 0) sum_of_delay_jitter = sum_of_delay_jitter + abs(Scheduler::instance().clock() - (HDR_CMN(pkt_buf[((last_fwd_sn_+1)%sn_cnt)%wnd_]))->ts_arr_ - last_delay_sample);
+      if (last_delay_sample != 0) sum_of_delay_jitter = sum_of_delay_jitter + fabs(Scheduler::instance().clock() - (HDR_CMN(pkt_buf[((last_fwd_sn_+1)%sn_cnt)%wnd_]))->ts_arr_ - last_delay_sample);
       last_delay_sample = Scheduler::instance().clock() - (HDR_CMN(pkt_buf[((last_fwd_sn_+1)%sn_cnt)%wnd_]))->ts_arr_;
       if (last_delay_sample > max_delay) max_delay = last_delay_sample;
       if (last_delay_sample < min_delay) min_delay = last_delay_sample;
@@ -842,7 +843,7 @@ void ARQAcker::decode(Handler* h, bool afterCodedreception){
   				finish_time = Scheduler::instance().clock();
   				delivered_pkts++;
   				delivered_data += HDR_CMN(pkt_buf[lost_sn%wnd_])->size_;
-          if (last_delay_sample !=0) sum_of_delay_jitter = sum_of_delay_jitter + abs(Scheduler::instance().clock() - HDR_CMN(pkt_buf[lost_sn%wnd_])->ts_arr_ - last_delay_sample);
+          if (last_delay_sample !=0) sum_of_delay_jitter = sum_of_delay_jitter + fabs(Scheduler::instance().clock() - HDR_CMN(pkt_buf[lost_sn%wnd_])->ts_arr_ - last_delay_sample);
           last_delay_sample = Scheduler::instance().clock() - HDR_CMN(pkt_buf[lost_sn%wnd_])->ts_arr_;
           if(last_delay_sample > max_delay) max_delay = last_delay_sample;
           if(last_delay_sample < min_delay) min_delay = last_delay_sample;
@@ -953,8 +954,8 @@ void ARQAcker::delete_lost_and_associated_coded_from_matrix(int pkt_to_remove)
   //In doing so we also need to delete all coded pkts containing the deleted lost pkt because they will no be usefull for decodings
   //We do not need to update known_packets: we could delete known_packets that are only contained in the deleted coded ones but
   //the impact in reducing the size of known_packets will be minimal and processing overhead high
-  multimap<int, set<int>>::iterator itcodedpkts;
-  multimap<int, set<int>> temp_coded;
+  multimap<int, set<int> >::iterator itcodedpkts;
+  multimap<int, set<int> > temp_coded;
   set<int>::iterator mmiter;
   set<int> intersect;
 
@@ -987,8 +988,8 @@ void ARQAcker::delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove
   //In doing so we also need to delete all coded pkts containing only this lost_packet because they are no more usefull in decodings
   //We do not need to update known_packets: we could delete known_packets that are only contained in the deleted coded ones but
   //the impact in reducing the size of known_packets will be minimal and processing overhead high
-  multimap<int, set<int>>::iterator itcodedpkts;
-  multimap<int, set<int>> temp_coded;
+  multimap<int, set<int> >::iterator itcodedpkts;
+  multimap<int, set<int> > temp_coded;
   set<int>::iterator mmiter;
   set<int> intersect;
 
@@ -1020,7 +1021,7 @@ void ARQAcker::delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove
 void ARQAcker::delete_known_from_matrix(int pkt_to_remove){
   //Should delete a known_packet that is now out of the sender's coding window, so no more subsequent coded pkts will contain it
   //The deletion will take place only if this packet is not involved in a stored coded packet, in which case it is needed for decoding
-  multimap<int, set<int>>::iterator itcodedpkts;
+  multimap<int, set<int> >::iterator itcodedpkts;
   int should_delete = 0;
   for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
     should_delete = (itcodedpkts->second).count(pkt_to_remove);
@@ -1090,13 +1091,9 @@ void ARQAcker::parse_coded_ack(Packet *p){
 
 		if(event_buf[seq_number]) {
 			event_buf[seq_number]->isCancelled = true;
-			if (debug) printf("ARQNacker, parse_coded_ack: NACK for pkt %d is cancelled.\n", seq_number);
+			if (debug) printf("ARQAcker, parse_coded_ack: NACK for pkt %d is cancelled.\n", seq_number);
 		}
-		//arq_tx_->ack(seq_number, -1);
-
 	}
-	//Packet::free(p);
-
 } //end of parse_coded_ack
 
 void ARQAcker::handle(Event* e)
