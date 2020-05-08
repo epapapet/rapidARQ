@@ -10,11 +10,12 @@ The folder contains:
 Currently the following examples for running a simulation can be used:
 
 ```
-./ns arq/arq-Tx_v4_1.tcl <bandwidth> <propagation_delay> <protocol> <window_size> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <simulation_time> <seed>
+./ns arq/<scriptfile> <bandwidth> <propagation_delay> <protocol> <window_size> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <simulation_time> <seed>
 ```
 
 where:
 
+* \<scriptfile\> : carq_ftp.tcl->C-ARQ algorithm, caterpillar_ftp.tcl->Caterpillar-FB, tetrys_ftp.tcl->Tetrys
 * \<bandwidth\> : in bps, example: set to 5Mbps -> 5M or 5000000
 * \<propagation_delay\> : in secs, example: set to 30ms -> 30ms or 0.03
 * \<protocol\> : the protocol to be used (either Tetrys, Caterpillar and our protocol in any other case)
@@ -31,11 +32,12 @@ where:
 or:
 
 ```
-./ns arq/arq-Tx_v4_2.tcl <bandwidth> <propagation_delay> <protocol> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <simulation_time> <seed>
+./ns arq/<scriptfile> <bandwidth> <propagation_delay> <protocol> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <simulation_time> <seed>
 ```
 
 where:
 
+* \<scriptfile\> : carq_cbr.tcl->C-ARQ algorithm, caterpillar_cbr.tcl->Caterpillar-FB, tetrys_cbr.tcl->Tetrys
 * \<cbr_rate\> : the rate of the cbr applications, in bps, example: set to 3Mbps -> 3M or 3000000
 * \<pkt_size\> : the size of udp pkt (including UDP and IP headers)
 
