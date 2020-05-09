@@ -462,7 +462,9 @@ CaterpillarAcker::CaterpillarAcker()
 	sum_of_delay = 0; //sum of delays for every packet delivered, used to calculate average delay
   sum_of_delay_jitter = 0; //sum of delay jitter for every packet delivered, used to calculate average delay
 	avg_dec_matrix_size = 0; //the avg size of the decoding matrix when decoding is performed (used to estimate processing overhead)
+  max_dec_matrix_size = 0; //the maximum size of the decoding matrix
   avg_known_pkts_size = 0; //the avg size of the known_packets when decoding is performed (part of decoding matrix already in diagonal form)
+  max_known_pkts_size = 0; //the maximum size of known_pkts
 	num_of_decodings = 0; //number of decoding operations
   avg_pkts_per_decoding = 0; //the average number of decoded packets per decoding
   max_delay = 0; //the maximum delay experienced by a packet
@@ -692,7 +694,9 @@ void CaterpillarAcker::print_stats()
 	printf("Number of actual decodings:\t\t%.0f\n", num_of_decodings);
   printf("Avg num of decoded pkts per decoding:\t%f\n", (num_of_decodings == 0) ? (0):(avg_pkts_per_decoding / num_of_decodings));
 	printf("Average decoding matrix size:\t\t%f\n", ( (num_of_decodings == 0) ? (0) : (avg_dec_matrix_size / num_of_decodings) ));
+  printf("Max decoding matrix size:\t\t%.0f\n", max_dec_matrix_size);
   printf("Average size of known_packets:\t\t%f\n", ( (num_of_decodings == 0) ? (0) : (avg_known_pkts_size / num_of_decodings) ));
+  printf("Max size of known_packets:\t\t%.0f\n", max_known_pkts_size);
   printf("//-------------------------------------------------//\n");
 } //end of print_stats
 
@@ -798,7 +802,9 @@ void CaterpillarAcker::decode(Handler* h, bool afterCodedreception){
 	if (((int)lost_packets.size() <= (int)coded_packets.size()) && (lost_packets.size() > 0)){
 			decoding_is_possible = true;
 			avg_dec_matrix_size = avg_dec_matrix_size + (int) lost_packets.size() + (int) known_packets.size();
+      if (lost_packets.size() + known_packets.size() > max_dec_matrix_size) max_dec_matrix_size = (int) lost_packets.size() + (int) known_packets.size();
       avg_known_pkts_size = avg_known_pkts_size + (int) known_packets.size();
+      if (known_packets.size() > max_known_pkts_size) max_known_pkts_size = (int) known_packets.size();
 			num_of_decodings ++;
       avg_pkts_per_decoding = avg_pkts_per_decoding + lost_packets.size();
 	}
@@ -935,7 +941,7 @@ void CaterpillarAcker::clean_decoding_matrix(int from, int to)
 {
   int runner_ = from;
 	do {
-		delete_known_from_matrix(runner_); //delete known pkt only if it is not contained in any stored coded one
+		delete_known_from_matrix_strict(runner_); //delete known pkt only if it is not contained in any stored coded one
     delete_lost_and_associated_coded_from_matrix(runner_); //delete lost pkt and also all coded containing this packet
 		runner_ = (runner_ + 1)%sn_cnt;
 	} while (runner_ != to);
@@ -1021,6 +1027,52 @@ void CaterpillarAcker::delete_known_from_matrix(int pkt_to_remove){
     if (should_delete > 0) return;
   }
   known_packets.erase(pkt_to_remove);
+} //end of delete_known_from_matrix
+
+void CaterpillarAcker::delete_known_from_matrix_strict(int pkt_to_remove){
+  //Should delete a known_packet that is now out of the sender's coding window
+  //Should also delete affected coded packets as well as lost ones
+  multimap<int, set<int> >::iterator itcodedpkts;
+  set <int> affected_pkts;
+  set <int> not_affected_pkts;
+  set <int> helper;
+  set <int> ::iterator iterhelper;
+
+  int erased_one = known_packets.erase(pkt_to_remove);
+  if (erased_one){
+    for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
+      if ((itcodedpkts->second).count(pkt_to_remove)){
+        set_union(affected_pkts.begin(),affected_pkts.end(),(itcodedpkts->second).begin(),(itcodedpkts->second).end(), std::inserter(helper,helper.begin()));
+        affected_pkts.clear();
+        affected_pkts = helper;
+        helper.clear();
+        coded_packets.erase(itcodedpkts);
+      } else {
+        set_union(not_affected_pkts.begin(),not_affected_pkts.end(),(itcodedpkts->second).begin(),(itcodedpkts->second).end(), std::inserter(helper,helper.begin()));
+        not_affected_pkts.clear();
+        not_affected_pkts = helper;
+        helper.clear();
+      }
+    }
+
+    helper.clear();
+    set_intersection(lost_packets.begin(),lost_packets.end(),affected_pkts.begin(),affected_pkts.end(), std::inserter(helper,helper.begin()));
+    affected_pkts.clear();
+    affected_pkts = helper;
+    helper.clear();
+    set_intersection(lost_packets.begin(),lost_packets.end(),not_affected_pkts.begin(),not_affected_pkts.end(), std::inserter(helper,helper.begin()));
+    not_affected_pkts.clear();
+    not_affected_pkts = helper;
+    helper.clear();
+    set_difference(affected_pkts.begin(),affected_pkts.end(),not_affected_pkts.begin(),not_affected_pkts.end(), std::inserter(helper,helper.begin()));
+    for (iterhelper = helper.begin(); iterhelper != helper.end(); ++iterhelper){
+      lost_packets.erase(*iterhelper);
+    }
+    affected_pkts.clear();
+    not_affected_pkts.clear();
+    helper.clear();
+  }
+
 } //end of delete_known_from_matrix
 
 void CaterpillarAcker::delete_nack_event(int seq_num){

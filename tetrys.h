@@ -124,7 +124,7 @@ public:
 	set<int> known_packets; //already correctly received packets
 	set<int> lost_packets; //how many packets are lost
   multimap<int, set<int> > coded_packets; //the received coded pkts that are useful for decoding
-  set<int> known_packets_for_ack; //already correctly received packets used for creating a cumulative ACK
+  set<int> known_packets_for_ack; //correctly received packets used for creating a cumulative ACK, same as known_packets but not emptied at decoding
 
 	TetrysNacker* nacker;
 
@@ -137,7 +137,9 @@ public:
 	double sum_of_delay; //sum of delays for every packet delivered, used to calculate average delay
   double sum_of_delay_jitter; //sum of delay jitter for every packet delivered, used to calculate average delay
   double avg_dec_matrix_size; //the avg size of the decoding matrix when decoding is performed (used to estimate processing overhead)
+  double max_dec_matrix_size; //the maximum size of decoding matrix
   double avg_known_pkts_size; //the avg size of the known_packets when decoding is performed (part of decoding matrix already in diagonal form)
+  double max_known_pkts_size; //the maximum size of known_packets
 	double num_of_decodings; //number of decoding operations
   double avg_pkts_per_decoding; //the average number of decoded packets per decoding
   double max_delay; //the maximum delay experienced by a packet
@@ -148,6 +150,7 @@ public:
 	void clean_decoding_matrix(int from, int to);
   void delete_lost_and_associated_coded_from_matrix(int pkt_to_remove);
   void delete_known_from_matrix(int pkt_to_remove);
+  void delete_known_from_matrix_strict(int pkt_to_remove);
 
  private:
 	Packet* create_coded_ack();
