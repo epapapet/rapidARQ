@@ -5,7 +5,7 @@
 #include <algorithm>
 
 class TetrysTx;
-enum TetrysARQStatus {IDLE,SENT,ACKED,RTX,DROP}; //statuses for packets sent by TetrysTx
+enum TetrysARQStatus {IDLE,SENT,ACKED,DROP}; //statuses for packets sent by TetrysTx
 enum TetrysPacketStatus {NONE,MISSING,RECEIVED,DECODED}; //for TetrysAcker, in order to tell apart different types of packets
 
 class TetrysHandler : public Handler {
@@ -34,8 +34,8 @@ class TetrysTx : public Connector {
 	void resume();
 	int command(int argc, const char*const* argv);
 	//functions for setting protocol parameters
+  int get_wnd() {return wnd_;}
 	int get_ratek() {return rate_k;}
-	int get_codingdepth() {return coding_depth;}
 	double get_linkdelay() {return lnk_delay_;}
 	double get_linkbw() {return lnk_bw_;}
 	int get_apppktsize() {return app_pkt_Size_;}
@@ -43,7 +43,6 @@ class TetrysTx : public Connector {
 	double get_start_time() {return start_time;}
 	double get_total_packets_sent() {return packets_sent;}
   double get_total_coded_packets_sent() {return coded_pkts_sent;}
-  double get_total_retransmissions() {return pkt_rtxs;}
  protected:
 	TetrysHandler arqh_;
 	Handler* handler_;
@@ -53,19 +52,15 @@ class TetrysTx : public Connector {
 
 	int wnd_;  //window size
 	int sn_cnt; //the total count of used sequence numbers
-	int retry_limit_; //maximum number of retransmissions allowed for each frame
 
 	Packet **pkt_buf; //buffer used for storing frames under transmission (maximum size of wnd_)
 	TetrysARQStatus *status; //the status of each frame under transmission
-	int *num_rtxs; //number of retransmisions for each frame under transmission
 	int *pkt_uids; //used for debugging purposes
 
 	int blocked_; //switch set to 1 when Tx engaged in transmiting a frame, 0 otherwise
 	int last_acked_sq_; //sequence number of last acked frame
 	int most_recent_sq_; //sequence number of most recent frame to be sent
-	int num_pending_retrans_; //number of frames needed to be retransmitted (after the first attempt)
 	int rate_k; //number of native packets sent before coded
-	int coding_depth; //the number of coding cycles used to create a coded
 
 	double lnk_bw_; //the bandwidth of the link_
 	double lnk_delay_; //the delay of the link_
@@ -77,9 +72,7 @@ class TetrysTx : public Connector {
 	double start_time; //time when 1st packet arrived at TetrysTx::recv
 	double packets_sent; //unique packets sent
 	double coded_pkts_sent; //total number of sent coded pkts
-	double pkt_rtxs; //the total number of retransmissions
 
-	int findpos_retrans();
 	void reset_lastacked();
 	Packet* create_coded_packet();
 
@@ -98,6 +91,7 @@ class TetrysRx : public Connector {
 	TetrysTx* arq_tx_;
 
 	double delay_; //delay for returning feedback
+  double ack_period; //the period for sending cumulative ACKs
 	double timeout_; //the time used to trigger nack()
 };
 
@@ -121,6 +115,8 @@ public:
 	int last_fwd_sn_; //sequence number of the last frame forwarded to the upper layer
 	int most_recent_acked; //sequence number of the last frame for which an ack has been sent
 
+  bool first_cum_ack_scheduled; //flag for starting the sequence of periodic acks
+
 	RandomVariable *ranvar_; //a random variable for generating errors in ACK delivery
 	double err_rate; //the rate of errors in ACK delivery
 
@@ -128,6 +124,7 @@ public:
 	set<int> known_packets; //already correctly received packets
 	set<int> lost_packets; //how many packets are lost
   multimap<int, set<int> > coded_packets; //the received coded pkts that are useful for decoding
+  set<int> known_packets_for_ack; //already correctly received packets used for creating a cumulative ACK
 
 	TetrysNacker* nacker;
 
@@ -150,7 +147,6 @@ public:
 	void deliver_frames(int steps, bool mindgaps, Handler *h);
 	void clean_decoding_matrix(int from, int to);
   void delete_lost_and_associated_coded_from_matrix(int pkt_to_remove);
-  void delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove);
   void delete_known_from_matrix(int pkt_to_remove);
 
  private:

@@ -45,12 +45,7 @@ TetrysTx::TetrysTx() : arqh_(*this)
 	coded = NULL; //used for storing a coded packet that finds the channel blocked_
 	handler_ = 0; //pointer to the outgoing queue (upstream object)
 
-	retry_limit_ = 0; //number of retransmisions allowed per frame
-	bind("retry_limit_", &retry_limit_);
-	num_pending_retrans_ = 0; //number of retransmissions scheduled and pending in TetrysTx
-
 	rate_k = 0; //the number of native frames before the creation of a coded one
-	coding_depth = 0; //the number of coding cycles used to create a coded frame
 	lnk_bw_ = 10000000;
 	bind("lnk_bw_", &lnk_bw_);
 	lnk_delay_ = 0.03;
@@ -64,13 +59,12 @@ TetrysTx::TetrysTx() : arqh_(*this)
 	start_time = -1; //time when 1st packet arrived at TetrysTx::recv
 	packets_sent = 0; //unique packets sent
   coded_pkts_sent = 0; ////total nu,ber of csent coded pkts
-  pkt_rtxs = 0; //the total number of pkt retransmissions
 } //end of constructor
 
 int TetrysTx::command(int argc, const char*const* argv)
 {
 	Tcl& tcl = Tcl::instance();
-	if (argc == 5) {
+	if (argc == 4) {
 		if (strcmp(argv[1], "setup-wnd") == 0) {
 			if (*argv[2] == '0') {
 				tcl.resultf("Cannot setup NULL wnd\n");
@@ -79,12 +73,10 @@ int TetrysTx::command(int argc, const char*const* argv)
 			wnd_ = atoi(argv[2]);
 			sn_cnt = 4 * wnd_; //although 2*wnd_ is enough, we use 4*wnd_ or more to tackle the case that TetrysTx drops packets and advances its window without TetrysRx knowing
 			pkt_buf = new Packet* [wnd_]; //buffer for storing pending frames
-			status = new TetrysARQStatus[wnd_]; //the status for each frame: IDLE,SENT,ACKED,RTX,DROP
-			num_rtxs = new int[wnd_]; //the number of retransmissions executed for each frame
+			status = new TetrysARQStatus[wnd_]; //the status for each frame: IDLE,SENT,ACKED,DROP
 			pkt_uids = new int[wnd_]; //buffer for storing the uids of pending frames: used only for diagnostic purposes
-			for(int i=0; i<wnd_; i++){ pkt_buf[i] = NULL; status[i] = IDLE; num_rtxs[i] = 0; pkt_uids[i]=-1; }
+			for(int i=0; i<wnd_; i++){ pkt_buf[i] = NULL; status[i] = IDLE; pkt_uids[i]=-1; }
 			rate_k = atoi(argv[3]);
-	        coding_depth = atoi(argv[4]);
 			if (rate_k == 0){
 				rate_k = 2147483647; //i.e., deactivate coding
 			}
@@ -137,7 +129,6 @@ void TetrysTx::recv(Packet* p, Handler* h)
 		pkt_buf[most_recent_sq_%wnd_] = p;
 		pkt_uids[most_recent_sq_%wnd_] = ch->uid();
 		status[most_recent_sq_%wnd_] = SENT;
-		num_rtxs[most_recent_sq_%wnd_] = 0;
 
     ch->ts_arr_ = Scheduler::instance().clock(); //used to calculate delay, retransmitted pkts are not sent through recv(), so this is a new pkt
 
@@ -220,9 +211,8 @@ void TetrysTx::ack(int rcv_sn, int rcv_uid)
 	//--------------------//
 
 	if (status[rcv_sn%wnd_] != ACKED){
-		if (debug) printf("TetrysTx ack: Pkt %d with status %d is ACKED. The news status is %d. Pending retrans=%d. LA(MR) before is %d(%d). SimTime=%.8f.\n ", rcv_sn, status[rcv_sn%wnd_], ACKED, num_pending_retrans_, last_acked_sq_, most_recent_sq_, Scheduler::instance().clock());
+		if (debug) printf("TetrysTx ack: Pkt %d with status %d is ACKED. The news status is %d. LA(MR) before is %d(%d). SimTime=%.8f.\n ", rcv_sn, status[rcv_sn%wnd_], ACKED, last_acked_sq_, most_recent_sq_, Scheduler::instance().clock());
 
-		if(status[rcv_sn%wnd_] == RTX) num_pending_retrans_--; //reduce the number of scheduled retransmissions
 		status[rcv_sn%wnd_] = ACKED;
 		if (rcv_sn%wnd_ == ((last_acked_sq_ + 1)%sn_cnt)%wnd_){
       reset_lastacked();  //acked frame is next in order, so check whether the active window should advance
@@ -290,32 +280,12 @@ void TetrysTx::nack(int rcv_sn, int rcv_uid)
 		if (debug) printf("TetrysTx, nack: NACK for pkt %d with status %d. SimTime=%.8f.\n", rcv_sn, status[rcv_sn%wnd_], Scheduler::instance().clock());
 	}
 
-	if ( num_rtxs[rcv_sn%wnd_] < retry_limit_) { //packet shoud be retransmitted
-		status[rcv_sn%wnd_] = RTX;
-		if (!blocked_){ //if TetrysTx is available go on with retransmision
-			if (debug) printf("TetrysTx, nack: Sending pkt %d. SimTime=%.8f.\n", rcv_sn, Scheduler::instance().clock());
-			blocked_ = 1;
-			num_rtxs[rcv_sn%wnd_]++;
-			status[rcv_sn%wnd_] = SENT;
-			Packet *newp = pkt_buf[rcv_sn%wnd_]->copy();
-      pkt_rtxs++;
-      native_counter++;
-      if (native_counter == rate_k){ //prepare a coded frame
-        coded = create_coded_packet();
-        native_counter = 0;
-      }
-			send(newp,&arqh_);
-		} else {
-			num_pending_retrans_++;
-		}
-	} else {//packet should be dropped
-		if (debug) printf("TetrysTx, nack: Dropping pkt %d. SimTime=%.8f.\n", rcv_sn, Scheduler::instance().clock());
-		status[rcv_sn%wnd_] = DROP;
-		if (rcv_sn%wnd_ == ((last_acked_sq_ + 1)%sn_cnt)%wnd_) {
-      reset_lastacked(); //droped frame is next in order so check whether the active window should advance
-      if (!blocked_) handler_->handle(0); //ask queue_ to deliver next packet
-    }
-	}
+	if (debug) printf("TetrysTx, nack: Dropping pkt %d. SimTime=%.8f.\n", rcv_sn, Scheduler::instance().clock());
+	status[rcv_sn%wnd_] = DROP;
+	if (rcv_sn%wnd_ == ((last_acked_sq_ + 1)%sn_cnt)%wnd_) {
+    reset_lastacked(); //droped frame is next in order so check whether the active window should advance
+    if (!blocked_) handler_->handle(0); //ask queue_ to deliver next packet
+  }
 
 }//end of nack
 
@@ -331,21 +301,6 @@ void TetrysTx::resume()
 		Packet *fwpkt = pending;
 		pending = NULL;
 		recv(fwpkt, handler_);
-	} else if (num_pending_retrans_ > 0) { //if there exist packets not ACKed that need to be retransmitted
-		int runner_ = findpos_retrans();
-		if (debug) printf("TetrysTx, resume: Sending pkt %d. SimTime=%.8f.\n", (HDR_CMN(pkt_buf[runner_]))->opt_num_forwards_, Scheduler::instance().clock());
-		num_rtxs[runner_]++;
-		status[runner_] = SENT;
-		num_pending_retrans_--;
-		blocked_ = 1;
-		Packet *pnew = (pkt_buf[runner_])->copy();
-    pkt_rtxs++;
-    native_counter++;
-		if (native_counter == rate_k){ //prepare a coded frame
-			coded = create_coded_packet();
-			native_counter = 0;
-		}
-		send(pnew,&arqh_);
 	} else {//there are no pending retransmision, check whether it is possible to send a new packet
 		//TO DO: check whether active window reaches wnd_ and TetrysTx is stuck without asking queue for the next frame
 		int current_wnd_ = (most_recent_sq_ - last_acked_sq_ + sn_cnt)%sn_cnt;
@@ -354,30 +309,6 @@ void TetrysTx::resume()
 
 }//end of resume
 
-int TetrysTx::findpos_retrans()
-{
-	//----------DEBUG------------------//
-	if((last_acked_sq_+1)%sn_cnt == most_recent_sq_) { fprintf(stderr, "Error at TetrysTx::findpos_retrans, no packet is waiting (stored) for transmission.\n"); abort(); }
-	//---------------------------------//
-
-	bool found = FALSE;
-	int runner_ = ((last_acked_sq_+1)%sn_cnt)%wnd_;
-
-	do {
-		if (status[runner_] == RTX) {
-			found = TRUE;
-			break;
-		}
-		runner_ = (runner_+1)%wnd_;
-	} while (runner_ != (most_recent_sq_%wnd_));
-
-	//----------DEBUG------------------//
-	if (!found){ fprintf(stderr, "Error at TetrysTx::findpos_retrans, packet with RTX status NOT FOUND.\n"); abort(); }
-	//---------------------------------//
-
-	return runner_;
-} //end of findpos_retrans
-
 void TetrysTx::reset_lastacked()
 {
 
@@ -385,11 +316,10 @@ void TetrysTx::reset_lastacked()
 
 	int runner_ = ((last_acked_sq_+1)%sn_cnt)%wnd_;
 	do {
-		if ((status[runner_] == RTX) || (status[runner_] == SENT)) break;
+		if (status[runner_] == SENT) break;
 		if (pkt_buf[runner_]) Packet::free(pkt_buf[runner_]); //free frames not needed any more
 		pkt_buf[runner_] = NULL;
 		status[runner_] = IDLE;
-		num_rtxs[runner_] = 0;
 		pkt_uids[runner_] = -1;
 
 		last_acked_sq_ = (last_acked_sq_ + 1)%sn_cnt;
@@ -411,21 +341,33 @@ void TetrysTx::reset_lastacked()
 //--------------------------------------------------------------------------------------------//
 TetrysRx::TetrysRx()
 {
-	arq_tx_=0;
+	arq_tx_ = 0;
 	delay_ = 0;
-	timeout_ = 0;
+  ack_period = 0; //the period for sending cumulative ACKs
+	timeout_ = 0; //the time used to trigger nack()
 } //end of constructor
 
 
 int TetrysRx::command(int argc, const char*const* argv)
 {
 	Tcl& tcl = Tcl::instance();
-	if (argc == 2) {
+	if (argc == 4) {
 		if (strcmp(argv[1], "update-delays") == 0) {
-      bool delayNack = false; //bool variable that controls the value assigned to timeout_. If false, keep timeout = delay.
-			delay_ = arq_tx_->get_linkdelay(); //the propagation delay
-      double nack_delay = (arq_tx_->get_codingdepth() * (arq_tx_->get_ratek() + 1) * arq_tx_->get_apppktsize())/arq_tx_->get_linkbw() + arq_tx_->get_linkdelay();
-			timeout_ = (delayNack == false) ? (delay_ + 8.0/arq_tx_->get_linkbw()): nack_delay;
+      delay_ = arq_tx_->get_linkdelay(); //the propagation delay
+      ack_period = atof(argv[2]);
+      double coding_cycles = arq_tx_->get_wnd()/arq_tx_->get_ratek();
+      double max_ack_size = arq_tx_->get_apppktsize() + (arq_tx_->get_wnd() + 1)*4.0;
+      double rtt_time = 2*delay_ + 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw();
+      if (ack_period == 0) {
+        ack_period = 8.0*(arq_tx_->get_wnd()*arq_tx_->get_apppktsize() + coding_cycles*max_ack_size)/arq_tx_->get_linkbw();
+      }
+      if (ack_period < 0){
+        ack_period = -(1.0/ack_period)*8.0*(arq_tx_->get_wnd()*arq_tx_->get_apppktsize() + coding_cycles*max_ack_size)/arq_tx_->get_linkbw();
+      }
+      timeout_ = atof(argv[3]);
+      if (timeout_ > 0) timeout_ = timeout_ - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); //needed to have a timeout equla to argv[3]
+      if (timeout_ == 0){ timeout_ = rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); }
+      if (timeout_ < 0) { timeout_ = -(1.0/timeout_)*rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); }
 			return(TCL_OK);
 		}
 	} else if (argc == 3) {
@@ -447,6 +389,8 @@ TetrysAcker::TetrysAcker()
 	sn_cnt = 0; //the number of available sequence numbers
 	last_fwd_sn_ = -1; //the sequence number of the last frame delivered to the upper layer
 	most_recent_acked = 0; //the sequence number of the frame that was most recently ACKed
+
+  first_cum_ack_scheduled = false; //flag for starting the sequence of periodic acks
 
 	ranvar_ = NULL; // random number generator used for simulating the loss rate for ACKs
 	err_rate = 0.0; // the error rate for ACks
@@ -532,7 +476,6 @@ void TetrysAcker::recv(Packet* p, Handler* h)
 
 	hdr_cmn *ch = HDR_CMN(p);
 	int seq_num = ch->opt_num_forwards_;
-	int pkt_uid = ch->uid();
 
 	int fw_dis = (seq_num - last_fwd_sn_ + sn_cnt)%sn_cnt; //distance of received seq_num from the last delivered frame
 	int fw_width = (most_recent_acked - last_fwd_sn_ + sn_cnt)%sn_cnt; //the active receiver window
@@ -612,23 +555,26 @@ void TetrysAcker::recv(Packet* p, Handler* h)
 		clean_decoding_matrix(oldest_sq_sender, new_oldest_sq_sender); //remove from the coding structures the frames that are now out of TetrysTx's active window
 	}
 
-	//-----Schedule ACK----------------//
-	TetrysACKEvent *new_ACKEvent = new TetrysACKEvent();
-	Event *ack_e;
-	new_ACKEvent->ACK_sn = seq_num;
-	new_ACKEvent->ACK_uid = pkt_uid;
-	new_ACKEvent->coded_ack = NULL;
-	new_ACKEvent->isCancelled = false;
-	ack_e = (Event *)new_ACKEvent;
-	if (delay_ > 0)
-		Scheduler::instance().schedule(this, ack_e, (delay_ + 8.0/arq_tx_->get_linkbw()));
-	else
-		handle(ack_e);
-	//---------------------------------//
+	//-----Schedule event for starting periodic ACKs----------------//
+  if (!first_cum_ack_scheduled){
+    first_cum_ack_scheduled = true;
+  	TetrysACKEvent *new_ACKEvent = new TetrysACKEvent();
+  	Event *ack_e;
+  	new_ACKEvent->ACK_sn = -2;
+  	new_ACKEvent->ACK_uid = -1;
+  	new_ACKEvent->coded_ack = NULL;
+  	new_ACKEvent->isCancelled = false;
+  	ack_e = (Event *)new_ACKEvent;
+  	if (delay_ > 0)
+  		Scheduler::instance().schedule(this, ack_e, ack_period);
+  	else
+  		handle(ack_e);
+  }
+	//--------------------------------------------------------------//
 
 	if (should_check_for_decoding){ //check if decoding is now possible due to the reception of the new pkt (if it is a retransmitted one)
 		known_packets.insert(seq_num); //add newly received pkt
-		delete_lost_and_find_associated_coded_in_matrix(seq_num); //delete received pkt from lost and delete coded pkts containing only this lost
+    known_packets_for_ack.insert(seq_num);
 		decode(h, false); //Check if decoding is now possible
 	}
 
@@ -684,8 +630,7 @@ void TetrysAcker::print_stats()
   printf("Minimum delay (msec):\t\t\t%f\n", min_delay * 1.0e+3);
   double meanjitter = (delivered_pkts <= 1) ? (0.0) : (sum_of_delay_jitter / (delivered_pkts -1));
 	printf("Mean delay jitter (msec):\t\t%f\n", meanjitter * 1.0e+3);
-  double avg_rtxs = arq_tx_->get_total_retransmissions() / arq_tx_->get_total_packets_sent();
-	printf("Avg num of retransmissions:\t\t%f\n", avg_rtxs);
+	printf("Avg num of retransmissions:\t\t%f\n", 0.0);
 	printf("Packet loss rate:\t\t\t%f\n", 1 - (delivered_pkts / arq_tx_->get_total_packets_sent()));
 
 	printf("Number of actual decodings:\t\t%.0f\n", num_of_decodings);
@@ -813,6 +758,7 @@ void TetrysAcker::decode(Handler* h, bool afterCodedreception){
 
   		int lost_sn = *it;
   		known_packets.insert(*it); //move decoded frame into known ones
+      known_packets_for_ack.insert(*it);
   		if (debug) printf("TetrysRx, decode: decoding pkt %d.\n", lost_sn);
   		//------------------------------------------//
   		//if ((status[lost_sn%wnd_] != MISSING)) { fprintf(stderr, "Error at TetrysRx::decode, decoded pkt cannot be found or has a wrong status.\n"); abort();}
@@ -871,22 +817,6 @@ void TetrysAcker::decode(Handler* h, bool afterCodedreception){
   	} //end for
   } //end if
 
-	//Sent a cumulative ack =======================================//
-	Event *ack_e;
-	TetrysACKEvent *new_ACKEvent = new TetrysACKEvent();
-	new_ACKEvent->ACK_sn = -1;
-	new_ACKEvent->ACK_uid = -1;
-	new_ACKEvent->coded_ack = create_coded_ack();
-	new_ACKEvent->isCancelled = false;
-	ack_e = (Event *)new_ACKEvent;
-	if (delay_ > 0)
-		Scheduler::instance().schedule(this, ack_e, (delay_ + HDR_CMN(new_ACKEvent->coded_ack)->size_ /arq_tx_->get_linkbw()));
-	else
-		handle(ack_e);
-
-	if (debug) printf("TetrysRx, decode: ACK sent.\n");
-	//=============================================================//
-
   if (decoding_is_possible){
     lost_packets.clear(); //clean because frames were decoded
     coded_packets.clear(); //coded frames no more needed because decoding completed
@@ -899,11 +829,11 @@ Packet* TetrysAcker::create_coded_ack(){
 	Packet *cpkt = Packet::alloc();
 	hdr_cmn *ch2 = HDR_CMN(cpkt);
 	ch2->opt_num_forwards_ = -10001; //coded packet ACK
-	unsigned char *buffer = new unsigned char[sizeof(int)*((int)(known_packets.size()) + 1)]; //4 bytes for each decoded frame plus a byte for the counter
+	unsigned char *buffer = new unsigned char[sizeof(int)*((int)(known_packets_for_ack.size()) + 1)]; //4 bytes for each decoded frame plus a byte for the counter
 
 	int cnt_pkts = 0;
 	set <int> :: iterator itr;
-	for (itr = known_packets.begin(); itr != known_packets.end(); itr++)
+	for (itr = known_packets_for_ack.begin(); itr != known_packets_for_ack.end(); itr++)
 	{
 		*(buffer+sizeof(int)*(cnt_pkts+1)) =  (*itr >> 24) & 0xFF;
 		*(buffer+sizeof(int)*(cnt_pkts+1)+1) = (*itr >> 16) & 0xFF;
@@ -973,47 +903,11 @@ void TetrysAcker::delete_lost_and_associated_coded_from_matrix(int pkt_to_remove
   } //done with this deleted lost packet
 } //end of delete_lost_and_associated_coded_from_matrix
 
-
-void TetrysAcker::delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove)
-{
-  //Should delete a lost_packet that turned into known (through a retransmission)
-  //In doing so we also need to delete all coded pkts containing only this lost_packet because they are no more usefull in decodings
-  //We do not need to update known_packets: we could delete known_packets that are only contained in the deleted coded ones but
-  //the impact in reducing the size of known_packets will be minimal and processing overhead high
-  multimap<int, set<int> >::iterator itcodedpkts;
-  multimap<int, set<int> > temp_coded;
-  set<int>::iterator mmiter;
-  set<int> intersect;
-
-  int deleted_lost_pkt = lost_packets.erase(pkt_to_remove);
-  if (deleted_lost_pkt > 0){
-    //printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = known_packets.begin(); mmiter != known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Num of coded pkts = %d. Lost pkt deleted is %d.\n", (int)coded_packets.size(), pkt_to_remove);
-    for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
-        //printf("Coded pkt %d:", itcodedpkts->first); for (mmiter = (itcodedpkts->second).begin(); mmiter != (itcodedpkts->second).end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf(".\n");
-        int exists_in_coded_cnt = (itcodedpkts->second).count(pkt_to_remove); //if deleted lost is in coded pkt exists_in_coded_cnt > 0
-        if (exists_in_coded_cnt != 0){ //coded pkt contains the lost pkt turned to known, so check if coded contains at least one other lost
-          set_intersection(lost_packets.begin(),lost_packets.end(),(itcodedpkts->second).begin(),(itcodedpkts->second).end(), std::inserter(intersect,intersect.begin()));
-          if (intersect.size() == 0) { //coded pkt does not contain at least one other lost pkt
-            //printf("Coded pkt is deleted.\n");
-          } else { //coded pkt contains at least one other lost pkt
-            temp_coded.insert(pair<int, set<int> >(itcodedpkts->first, itcodedpkts->second));
-          }
-          intersect.clear();
-        } else { //coded pkt does not contain the deleted lost pkt
-          temp_coded.insert(pair<int, set<int> >(itcodedpkts->first, itcodedpkts->second));
-        }
-    } // done cleaning coded_pkts
-    coded_packets.clear();
-    coded_packets = temp_coded;
-    temp_coded.clear();
-    //printf("The remaining coded_pkts are %d.\n", (int)coded_packets.size());
-  } //done with this deleted lost packet
-} //end of delete_lost_and_find_associated_coded_in_matrix
-
 void TetrysAcker::delete_known_from_matrix(int pkt_to_remove){
   //Should delete a known_packet that is now out of the sender's coding window, so no more subsequent coded pkts will contain it
   //The deletion will take place only if this packet is not involved in a stored coded packet, in which case it is needed for decoding
   multimap<int, set<int> >::iterator itcodedpkts;
+  known_packets_for_ack.erase(pkt_to_remove);
   int should_delete = 0;
   for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
     should_delete = (itcodedpkts->second).count(pkt_to_remove);
@@ -1091,38 +985,38 @@ void TetrysAcker::parse_coded_ack(Packet *p){
 void TetrysAcker::handle(Event* e)
 {
 
-	TetrysACKEvent *rcv_ack = (TetrysACKEvent *)e;
-	int rcv_sn = rcv_ack->ACK_sn;
-	int rcv_uid = rcv_ack->ACK_uid;
-	Packet *rcv_p = rcv_ack->coded_ack;
+	TetrysACKEvent *rcv_event = (TetrysACKEvent *)e;
+	int rcv_sn = rcv_event->ACK_sn;
+	Packet *rcv_p = rcv_event->coded_ack;
+
+  if (rcv_sn == -2){
+    //Sent a cumulative ack =======================================//
+  	Event *ack_e;
+  	TetrysACKEvent *new_ACKEvent = new TetrysACKEvent();
+  	new_ACKEvent->ACK_sn = -1;
+  	new_ACKEvent->ACK_uid = -1;
+  	new_ACKEvent->coded_ack = create_coded_ack();
+  	new_ACKEvent->isCancelled = false;
+  	ack_e = (Event *)new_ACKEvent;
+  	if (delay_ > 0)
+  		Scheduler::instance().schedule(this, ack_e, (delay_ + HDR_CMN(new_ACKEvent->coded_ack)->size_ /arq_tx_->get_linkbw()));
+  	else
+  		handle(ack_e);
+
+  	if (debug) printf("TetrysAcker, handle: cumulative ACK sent.\n");
+  	//=============================================================//
+
+    Scheduler::instance().schedule(this, e, ack_period);
+    return;
+  }
 	delete e;
 
 	if ( ranvar_->value() < err_rate ){
-		if (rcv_p == NULL){ //a coded ack is not expected so no need to call arq_tx->nack() at the appropriate time
-			if (debug) printf("Acker, handle: ACK for pkt %d is lost.\n", rcv_sn);
-			if (timeout_ - (delay_ + 8.0/arq_tx_->get_linkbw())==  0) { //if timeout is the same as the time needed for ACK to be delivered then just call nack() instead of ack()
-				arq_tx_->nack(rcv_sn, rcv_uid);
-			} else { //schedule the end of timeout (nack()) since the ACK is lost and the timeout expires later
-				TetrysACKEvent *ACKEvent_helper = new TetrysACKEvent();
-				Event *ack_e_helper;
-				ACKEvent_helper->ACK_sn = rcv_sn;
-				ACKEvent_helper->ACK_uid = rcv_uid;
-				ACKEvent_helper->coded_ack = NULL;
-				ACKEvent_helper->isCancelled = false;
-				ack_e_helper = (Event *)ACKEvent_helper;
-				Scheduler::instance().schedule(nacker, ack_e_helper, timeout_ - (delay_ + 8.0/arq_tx_->get_linkbw()));
-			}
-		} else { //the coded ack is lost, so free
-			if (debug) printf("Acker, handle: Coded ACK is lost.\n");
-			Packet::free(rcv_p);
-		}
+    if (debug) printf("Acker, handle: Coded ACK is lost.\n");
+    Packet::free(rcv_p);
 	} else {
-		if(rcv_p){ //different call based on the type of received packet
-			parse_coded_ack(rcv_p);
-			arq_tx_->ack(rcv_p);
-		}else{
-			arq_tx_->ack(rcv_sn,rcv_uid);
-		}
+		parse_coded_ack(rcv_p);
+		arq_tx_->ack(rcv_p);
 	}
 
 } //end of handle
