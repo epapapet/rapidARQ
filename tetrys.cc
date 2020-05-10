@@ -368,13 +368,14 @@ int TetrysRx::command(int argc, const char*const* argv)
       delay_ = arq_tx_->get_linkdelay(); //the propagation delay
       ack_period = atof(argv[2]);
       double coding_cycles = arq_tx_->get_wnd()/arq_tx_->get_ratek();
-      double max_ack_size = arq_tx_->get_apppktsize() + (arq_tx_->get_wnd() + 1)*4.0;
+      double max_coded_size = arq_tx_->get_apppktsize() + (arq_tx_->get_wnd() + 1)*4.0;
+      double max_ack_size = (arq_tx_->get_wnd() + 1)*4.0;
       double rtt_time = 2*delay_ + 8.0*(arq_tx_->get_apppktsize() + max_ack_size)/arq_tx_->get_linkbw();
       if (ack_period == 0) {
-        ack_period = 8.0*(arq_tx_->get_wnd()*arq_tx_->get_apppktsize() + coding_cycles*max_ack_size)/arq_tx_->get_linkbw();
+        ack_period = 8.0*(arq_tx_->get_wnd()*arq_tx_->get_apppktsize() + coding_cycles*max_coded_size)/arq_tx_->get_linkbw();
       }
       if (ack_period < 0){
-        ack_period = -(1.0/ack_period)*8.0*(arq_tx_->get_wnd()*arq_tx_->get_apppktsize() + coding_cycles*max_ack_size)/arq_tx_->get_linkbw();
+        ack_period = -(1.0/ack_period)*8.0*(arq_tx_->get_wnd()*arq_tx_->get_apppktsize() + coding_cycles*max_coded_size)/arq_tx_->get_linkbw();
       }
       timeout_ = atof(argv[3]);
       if (timeout_ > 0) timeout_ = timeout_ - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); //needed to have a timeout equla to argv[3]
@@ -1069,7 +1070,7 @@ void TetrysAcker::handle(Event* e)
   	new_ACKEvent->isCancelled = false;
   	ack_e = (Event *)new_ACKEvent;
   	if (delay_ > 0)
-  		Scheduler::instance().schedule(this, ack_e, (delay_ + HDR_CMN(new_ACKEvent->coded_ack)->size_ /arq_tx_->get_linkbw()));
+  		Scheduler::instance().schedule(this, ack_e, (delay_ + 8.0*HDR_CMN(new_ACKEvent->coded_ack)->size_ /arq_tx_->get_linkbw()));
   	else
   		handle(ack_e);
 
