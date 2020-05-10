@@ -31,6 +31,7 @@ class CaterpillarTx : public Connector {
 	void nack(int rcv_sn, int rcv_uid);
 	void ack(int rcv_sn, int rcv_uid);
 	void ack(Packet *p); //overloaded ack method
+  bool ack_incr(int rcv_sn);
 	void resume();
 	int command(int argc, const char*const* argv);
 	//functions for setting protocol parameters

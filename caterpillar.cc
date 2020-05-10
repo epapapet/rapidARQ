@@ -236,6 +236,8 @@ void CaterpillarTx::ack(int rcv_sn, int rcv_uid)
 
 void CaterpillarTx::ack(Packet *p){ //called when a coded ack arrives, reads the contents and checks to advance the window
 
+  bool should_forward_window = false;
+  bool valid_seqnum = true;
 	unsigned char *contents = p->accessdata();
 	int cnt_pkts = -1;
 	cnt_pkts = *(contents);
@@ -264,11 +266,39 @@ void CaterpillarTx::ack(Packet *p){ //called when a coded ack arrives, reads the
 		seq_number = seq_number << 8 | *(contents+sizeof(int)*j+2);
 		seq_number = seq_number << 8 | *(contents+sizeof(int)*j+3);
 
-		ack(seq_number, -1);
+    valid_seqnum = ack_incr(seq_number);
+    if (!valid_seqnum) continue;
+    if (seq_number%wnd_ == ((last_acked_sq_ + 1)%sn_cnt)%wnd_) should_forward_window = true;
 	}
+  if (should_forward_window){
+    reset_lastacked();  //acked frame is next in order, so check whether the active window should advance
+    if (!blocked_) handler_->handle(0); //ask queue_ to deliver next packet
+  }
 	Packet::free(p);
 
 } //end of ack(cumulative)
+
+bool CaterpillarTx::ack_incr(int rcv_sn)
+{
+
+  int fw_dis = (rcv_sn - last_acked_sq_ + sn_cnt)%sn_cnt;
+	int fw_width = (most_recent_sq_ - last_acked_sq_ + sn_cnt)%sn_cnt;
+	bool within_fww = ((fw_dis < fw_width) && (fw_dis > 0)) ? (true) : (false);
+	if (!within_fww) {return false;} //ARTx may receive multiple ACKs per frame due to coded frames, so ignore ACKs out of the active window
+
+	//Sanity checks--------//
+	if (status[rcv_sn%wnd_] == IDLE) { fprintf(stderr,"Error at CaterpillarTx::ack, an ACK is received when the status is not SENT. It is %d.\n", status[rcv_sn%wnd_]); abort(); }
+	if (handler_ == 0) { fprintf(stderr,"Error at CaterpillarTx::ack, handler_ is null.\n"); abort(); }
+	//--------------------//
+
+	if (status[rcv_sn%wnd_] != ACKED){
+		if (debug) printf("CaterpillarTx ack: Pkt %d with status %d is ACKED. The news status is %d. Pending retrans=%d. LA(MR) before is %d(%d). SimTime=%.8f.\n ", rcv_sn, status[rcv_sn%wnd_], ACKED, num_pending_retrans_, last_acked_sq_, most_recent_sq_, Scheduler::instance().clock());
+		if(status[rcv_sn%wnd_] == RTX) num_pending_retrans_--; //reduce the number of scheduled retransmissions
+		status[rcv_sn%wnd_] = ACKED;
+	}
+  return true;
+
+} //end of ack_incr
 
 void CaterpillarTx::nack(int rcv_sn, int rcv_uid)
 {
