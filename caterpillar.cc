@@ -437,7 +437,7 @@ int CaterpillarRx::command(int argc, const char*const* argv)
 		if (strcmp(argv[1], "update-delays") == 0) {
 			delay_ = arq_tx_->get_linkdelay(); //the propagation delay
       bool delayNack = false; //bool variable that controls the value assigned to timeout_. If false, keep timeout = delay.
-      double nack_delay = (arq_tx_->get_codingdepth() * (arq_tx_->get_ratek() + 1) * arq_tx_->get_apppktsize())/arq_tx_->get_linkbw() + arq_tx_->get_linkdelay();
+      double nack_delay = (arq_tx_->get_codingdepth() * (arq_tx_->get_ratek() + 1) * 8 * arq_tx_->get_apppktsize())/arq_tx_->get_linkbw() + arq_tx_->get_linkdelay();
 			timeout_ = (delayNack == false) ? (delay_ + 8.0/arq_tx_->get_linkbw()): nack_delay;
 			return(TCL_OK);
 		}
@@ -900,7 +900,7 @@ void CaterpillarAcker::decode(Handler* h, bool afterCodedreception){
 	new_ACKEvent->isCancelled = false;
 	ack_e = (Event *)new_ACKEvent;
 	if (delay_ > 0)
-		Scheduler::instance().schedule(this, ack_e, (delay_ + HDR_CMN(new_ACKEvent->coded_ack)->size_ /arq_tx_->get_linkbw()));
+		Scheduler::instance().schedule(this, ack_e, (delay_ + 8*HDR_CMN(new_ACKEvent->coded_ack)->size_ /arq_tx_->get_linkbw()));
 	else
 		handle(ack_e);
 

@@ -58,7 +58,7 @@ TetrysTx::TetrysTx() : arqh_(*this)
 
 	start_time = -1; //time when 1st packet arrived at TetrysTx::recv
 	packets_sent = 0; //unique packets sent
-  coded_pkts_sent = 0; ////total nu,ber of csent coded pkts
+  coded_pkts_sent = 0; //total number of csent coded pkts
   total_pause_time = 0; //the total time the sender spend paused because the window reached its limit
   start_of_pause_period = -1; //the start of a pause period, used to calculate the total_pause_time
 } //end of constructor
