@@ -1,10 +1,10 @@
 set arg_cnt [lindex $argc]
 if {$arg_cnt != 11} {
-    puts "# usage: ns <scriptfile> <bandwidth> <propagation_delay> <window_size> <pkt_size> <err_rate> <ack_rate> <rate_k> <acn_period> <timeout> <simulation_time> <seed>"
+    puts "# usage: ns <scriptfile> <bandwidth> <propagation_delay> <window_size> <pkt_size> <err_rate> <ack_rate> <rate_k> <ack_period> <timeout> <simulation_time> <seed>"
     puts "* <bandwidth> : in bps, example: set to 5Mbps -> 5M or 5000000"
     puts "* <propagation_delay> : in secs, example: set to 30ms -> 30ms or 0.03"
-    puts "* <window_size> : aqr window size in pkts"
-    puts "* <pkt_size> : the size of udp pkt (including UDP and IP headers)"
+    puts "* <window_size> : arq window size in pkts"
+    puts "* <pkt_size> : the size of a TCP segment (not including the TCP and IP headers)"
     puts "* <err_rate> : the error rate in the forward channel (error rate for frames)"
     puts "* <ack_rate> : the error rate in the return channel (error rate for ACKs)"
     puts "* <rate_k> : the number of native pkts sent before creating a coded pkt (actually defines the code rate), 0 corresponds to deactivating coding"
@@ -118,8 +118,8 @@ $em drop-target [new Agent/Null]
 $ns link-lossmodel $em $n1 $n3
 
 set rate_k [lindex $argv 6]
-if {[string first "ms" [lindex $argv 7]] != -1} {
-    set ack_per_string [string map {"ms" ""} [lindex $argv 7]]
+if {[string first "ms" [lindex $argv 7]] != -1} { 
+    set ack_per_string [string map {"ms" ""} [lindex $argv 7]] 
     set ack_period [expr {double($ack_per_string)/1000}]
 } else {
     set ack_period [lindex $argv 7]
