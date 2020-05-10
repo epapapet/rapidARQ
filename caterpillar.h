@@ -44,6 +44,7 @@ class CaterpillarTx : public Connector {
 	double get_total_packets_sent() {return packets_sent;}
   double get_total_coded_packets_sent() {return coded_pkts_sent;}
   double get_total_retransmissions() {return pkt_rtxs;}
+  double get_total_pause_time() {return total_pause_time;}
  protected:
 	CaterpillarHandler arqh_;
 	Handler* handler_;
@@ -78,6 +79,8 @@ class CaterpillarTx : public Connector {
 	double packets_sent; //unique packets sent
   double coded_pkts_sent; //total number of sent coded pkts
   double pkt_rtxs; //the total number of retransmissions
+  double total_pause_time; //the total time the sender spend paused because the window reached its limit
+  double start_of_pause_period; //the start of a pause period, used to calculate the total_pause_time
 
 	int findpos_retrans();
 	void reset_lastacked();

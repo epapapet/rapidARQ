@@ -66,6 +66,8 @@ ARQTx::ARQTx() : arqh_(*this)
 	packets_sent = 0; //unique packets sent
   coded_pkts_sent = 0; //total number of sent coded pkts
   pkt_rtxs = 0; //the total number of pkt retransmissions
+  total_pause_time = 0; //the total time the sender spend paused because the window reached its limit
+  start_of_pause_period = -1; //the start of a pause period, used to calculate the total_pause_time
 } //end of constructor
 
 int ARQTx::command(int argc, const char*const* argv)
@@ -357,7 +359,11 @@ void ARQTx::resume()
 	} else {//there are no pending retransmision, check whether it is possible to send a new packet
 		//TO DO: check whether active window reaches wnd_ and ARQTx is stuck without asking queue for the next frame
 		int current_wnd_ = (most_recent_sq_ - last_acked_sq_ + sn_cnt)%sn_cnt;
-		if (current_wnd_ <= wnd_) handler_->handle(0); //ask queue_ to deliver next packet
+		if (current_wnd_ <= wnd_) {
+      handler_->handle(0); //ask queue_ to deliver next packet
+    } else {
+      if (start_of_pause_period == -1) start_of_pause_period = Scheduler::instance().clock(); //start logging a pause period
+    }
 	}
 
 }//end of resume
@@ -389,6 +395,7 @@ int ARQTx::findpos_retrans()
 void ARQTx::reset_lastacked()
 {
 
+  bool window_advanced = false;
 	if((last_acked_sq_+1)%sn_cnt == most_recent_sq_) return; //no need to reset last_ack because there is no packet stored (MOST RECENT - LAST ACKED = 1)
 
 	int runner_ = ((last_acked_sq_+1)%sn_cnt)%wnd_;
@@ -400,10 +407,15 @@ void ARQTx::reset_lastacked()
 		num_rtxs[runner_] = 0;
 		pkt_uids[runner_] = -1;
 
+    window_advanced = true;
 		last_acked_sq_ = (last_acked_sq_ + 1)%sn_cnt;
 		runner_ = (runner_ + 1)%wnd_;
 	} while (runner_ != (most_recent_sq_%wnd_));
 
+  if (window_advanced) {
+    if (start_of_pause_period != -1) total_pause_time = total_pause_time + Scheduler::instance().clock() - start_of_pause_period;
+    start_of_pause_period = -1;
+  }
 	if(debug) printf("ARQTx, reset_lastacked: new LA(MR) are %d(%d). SimTime=%.8f.\n", last_acked_sq_, most_recent_sq_, Scheduler::instance().clock());
 
 } // end of reset_lastacked
@@ -685,6 +697,7 @@ void ARQAcker::print_stats()
   if (delivered_pkts == 0) {finish_time = Scheduler::instance().clock();} //hack for the case that deliver_frames is not called
 	double throughput = (delivered_data * 8) / (finish_time - arq_tx_->get_start_time());
 	printf("Total throughput (Mbps):\t\t%f\n", throughput * 1.0e-6);
+  printf("Total pause time (secs):\t\t%f\n", arq_tx_->get_total_pause_time());
 
 	printf("Unique packets sent:\t\t\t%.0f\n", arq_tx_->get_total_packets_sent());
   printf("Coded packets sent:\t\t\t%.0f\n", arq_tx_->get_total_coded_packets_sent());

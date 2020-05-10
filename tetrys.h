@@ -43,6 +43,7 @@ class TetrysTx : public Connector {
 	double get_start_time() {return start_time;}
 	double get_total_packets_sent() {return packets_sent;}
   double get_total_coded_packets_sent() {return coded_pkts_sent;}
+  double get_total_pause_time() {return total_pause_time;}
  protected:
 	TetrysHandler arqh_;
 	Handler* handler_;
@@ -72,6 +73,8 @@ class TetrysTx : public Connector {
 	double start_time; //time when 1st packet arrived at TetrysTx::recv
 	double packets_sent; //unique packets sent
 	double coded_pkts_sent; //total number of sent coded pkts
+  double total_pause_time; //the total time the sender spend paused because the window reached its limit
+  double start_of_pause_period; //the start of a pause period, used to calculate the total_pause_time
 
 	void reset_lastacked();
 	Packet* create_coded_packet();

@@ -59,6 +59,8 @@ TetrysTx::TetrysTx() : arqh_(*this)
 	start_time = -1; //time when 1st packet arrived at TetrysTx::recv
 	packets_sent = 0; //unique packets sent
   coded_pkts_sent = 0; ////total nu,ber of csent coded pkts
+  total_pause_time = 0; //the total time the sender spend paused because the window reached its limit
+  start_of_pause_period = -1; //the start of a pause period, used to calculate the total_pause_time
 } //end of constructor
 
 int TetrysTx::command(int argc, const char*const* argv)
@@ -304,7 +306,11 @@ void TetrysTx::resume()
 	} else {//there are no pending retransmision, check whether it is possible to send a new packet
 		//TO DO: check whether active window reaches wnd_ and TetrysTx is stuck without asking queue for the next frame
 		int current_wnd_ = (most_recent_sq_ - last_acked_sq_ + sn_cnt)%sn_cnt;
-		if (current_wnd_ <= wnd_) handler_->handle(0); //ask queue_ to deliver next packet
+		if (current_wnd_ <= wnd_) {
+      handler_->handle(0); //ask queue_ to deliver next packet
+    } else {
+      if (start_of_pause_period == -1) start_of_pause_period = Scheduler::instance().clock(); //start logging a pause period
+    }
 	}
 
 }//end of resume
@@ -312,6 +318,7 @@ void TetrysTx::resume()
 void TetrysTx::reset_lastacked()
 {
 
+  bool window_advanced = false;
 	if((last_acked_sq_+1)%sn_cnt == most_recent_sq_) return; //no need to reset last_ack because there is no packet stored (MOST RECENT - LAST ACKED = 1)
 
 	int runner_ = ((last_acked_sq_+1)%sn_cnt)%wnd_;
@@ -322,10 +329,15 @@ void TetrysTx::reset_lastacked()
 		status[runner_] = IDLE;
 		pkt_uids[runner_] = -1;
 
+    window_advanced = true;
 		last_acked_sq_ = (last_acked_sq_ + 1)%sn_cnt;
 		runner_ = (runner_ + 1)%wnd_;
 	} while (runner_ != (most_recent_sq_%wnd_));
 
+  if (window_advanced) {
+    if (start_of_pause_period != -1) total_pause_time = total_pause_time + Scheduler::instance().clock() - start_of_pause_period;
+    start_of_pause_period = -1;
+  }
 	if(debug) printf("TetrysTx, reset_lastacked: new LA(MR) are %d(%d). SimTime=%.8f.\n", last_acked_sq_, most_recent_sq_, Scheduler::instance().clock());
 
 } // end of reset_lastacked
@@ -357,7 +369,7 @@ int TetrysRx::command(int argc, const char*const* argv)
       ack_period = atof(argv[2]);
       double coding_cycles = arq_tx_->get_wnd()/arq_tx_->get_ratek();
       double max_ack_size = arq_tx_->get_apppktsize() + (arq_tx_->get_wnd() + 1)*4.0;
-      double rtt_time = 2*delay_ + 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw();
+      double rtt_time = 2*delay_ + 8.0*(arq_tx_->get_apppktsize() + max_ack_size)/arq_tx_->get_linkbw();
       if (ack_period == 0) {
         ack_period = 8.0*(arq_tx_->get_wnd()*arq_tx_->get_apppktsize() + coding_cycles*max_ack_size)/arq_tx_->get_linkbw();
       }
@@ -366,8 +378,8 @@ int TetrysRx::command(int argc, const char*const* argv)
       }
       timeout_ = atof(argv[3]);
       if (timeout_ > 0) timeout_ = timeout_ - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); //needed to have a timeout equla to argv[3]
-      if (timeout_ == 0){ timeout_ = rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); }
-      if (timeout_ < 0) { timeout_ = -(1.0/timeout_)*rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); }
+      if (timeout_ == 0){ timeout_ = rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); } //the total timeout is rtt_time
+      if (timeout_ < 0) { timeout_ = -(1.0/timeout_)*rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); } //the total timeout is rtt_time/timeout_
       if (timeout_ < 0) {
         tcl.resultf("Timeout is too small.\n");
 				return(TCL_ERROR);
@@ -627,6 +639,7 @@ void TetrysAcker::print_stats()
   if (delivered_pkts == 0) {finish_time = Scheduler::instance().clock();} //hack for the case that deliver_frames is not called
 	double throughput = (delivered_data * 8) / (finish_time - arq_tx_->get_start_time());
 	printf("Total throughput (Mbps):\t\t%f\n", throughput * 1.0e-6);
+  printf("Total pause time (secs):\t\t%f\n", arq_tx_->get_total_pause_time());
 
 	printf("Unique packets sent:\t\t\t%.0f\n", arq_tx_->get_total_packets_sent());
   printf("Coded packets sent:\t\t\t%.0f\n", arq_tx_->get_total_coded_packets_sent());
