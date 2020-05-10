@@ -3,7 +3,7 @@ if {$arg_cnt != 12} {
     puts "# usage: ns <scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <rate_k> <ack_period> <timeout> <simulation_time> <seed>"
     puts "* <bandwidth> : in bps, example: set to 5Mbps -> 5M or 5000000"
     puts "* <propagation_delay> : in secs, example: set to 30ms -> 30ms or 0.03"
-    puts "* <window_size> : aqr window size in pkts"
+    puts "* <window_size> : arq window size in pkts"
     puts "* <cbr_rate> : the rate of the cbr applications, in bps, example: set to 3Mbps -> 3M or 3000000"
     puts "* <pkt_size> : the size of udp pkt (including UDP and IP headers)"
     puts "* <err_rate> : the error rate in the forward channel (error rate for frames)"
