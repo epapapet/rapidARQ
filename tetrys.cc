@@ -973,6 +973,7 @@ void TetrysAcker::delete_known_from_matrix_strict(int pkt_to_remove){
   //Should delete a known_packet that is now out of the sender's coding window
   //Should also delete affected coded packets as well as lost ones
   multimap<int, set<int> >::iterator itcodedpkts;
+  multimap<int, set<int> > temp_coded;
   set <int> affected_pkts;
   set <int> not_affected_pkts;
   set <int> helper;
@@ -987,14 +988,17 @@ void TetrysAcker::delete_known_from_matrix_strict(int pkt_to_remove){
         affected_pkts.clear();
         affected_pkts = helper;
         helper.clear();
-        coded_packets.erase(itcodedpkts);
       } else {
         set_union(not_affected_pkts.begin(),not_affected_pkts.end(),(itcodedpkts->second).begin(),(itcodedpkts->second).end(), std::inserter(helper,helper.begin()));
         not_affected_pkts.clear();
         not_affected_pkts = helper;
         helper.clear();
+        temp_coded.insert(pair<int, set<int> >(itcodedpkts->first, itcodedpkts->second));
       }
     }
+    coded_packets.clear();
+    coded_packets = temp_coded;
+    temp_coded.clear();
 
     helper.clear();
     set_intersection(lost_packets.begin(),lost_packets.end(),affected_pkts.begin(),affected_pkts.end(), std::inserter(helper,helper.begin()));
