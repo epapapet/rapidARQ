@@ -1,6 +1,6 @@
 set arg_cnt [lindex $argc]
 if {$arg_cnt != 12} {
-    puts "# usage: ns <scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <simulation_time> <seed>"
+    puts "# usage: ns <scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <timeout> <simulation_time> <seed>"
     puts "# <bandwidth> : in bps, example: set to 5Mbps -> 5M or 5000000"
     puts "# <propagation_delay> : in secs, example: set to 30ms -> 30ms or 0.03"
     puts "# <window_size> : arq window size in pkts"
@@ -10,7 +10,7 @@ if {$arg_cnt != 12} {
     puts "# <ack_rate> : the error rate in the return channel (error rate for ACKs)"
     puts "# <num_rtx> : the number of retransmissions allowed for a native pkt"
     puts "# <rate_k> : the number of native pkts sent before creating a coded pkt (actually define the code rate)"
-    puts "# <coding_depth> : the number of coding cycles used to create a coded pkt"
+    puts "* <timeout> : the time for expiring an non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v"
     puts "# <simulation_time> : the simulation time in secs"
     puts "# <seed> : seed used to produce randomness"
     exit 1
@@ -18,7 +18,6 @@ if {$arg_cnt != 12} {
 
 CaterpillarTx set retry_limit_ 100
 CaterpillarTx set rate_k 1000
-CaterpillarTx set coding_depth 0
 CaterpillarTx set lnk_delay_ 30ms
 CaterpillarTx set lnk_bw_ 10M
 CaterpillarTx set app_pkt_Size_ 1000
@@ -26,7 +25,7 @@ CaterpillarTx set debug_ NULL
 CaterpillarAcker set debug_ NULL
 CaterpillarNacker set debug_ NULL
 
-SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth limit vgseed ackerr } {
+SimpleLink instproc link-arq { wndsize apktsz ratekk timeoutt limit vgseed ackerr } {
     $self instvar link_ link_errmodule_ queue_ drophead_ head_
     $self instvar tARQ_ acker_ nacker_
  
@@ -35,7 +34,7 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth limit vgseed ackerr
     set nacker_ [new CaterpillarNacker]
 
     #Tx set up
-	$tARQ_ setup-wnd $wndsize $ratekk $coddpth
+	$tARQ_ setup-wnd $wndsize $ratekk
     $tARQ_ set retry_limit_ $limit
     $tARQ_ set lnk_bw_ [$self bw]
     $tARQ_ set lnk_delay_ [$self delay]
@@ -46,7 +45,7 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth limit vgseed ackerr
     $acker_ attach-CaterpillarTx $tARQ_
     $acker_ setup-CaterpillarNacker $nacker_
     $acker_ setup-wnd $wndsize
-    $acker_ update-delays
+    $acker_ update-delays $timeoutt
     
     set vagrngn2 [new RNG]
     $vagrngn2 seed [expr {$vgseed + 1}]
@@ -59,7 +58,7 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth limit vgseed ackerr
     #Nacker set up
     $nacker_ attach-CaterpillarTx $tARQ_
 	$nacker_ setup-CaterpillarAcker $acker_
-    $nacker_ update-delays
+    $nacker_ update-delays $timeoutt
 
     
     #Connections between Tx, Acker, Nacker, queue, drop-target and Acker target
@@ -73,9 +72,9 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth limit vgseed ackerr
 	return $acker_
 }
 
-Simulator instproc link-arq {wndsize apktsize ratek coddth limit from to vgseed ackerr} {
+Simulator instproc link-arq {wndsize apktsize ratek timeout limit from to vgseed ackerr} {
     set link [$self link $from $to]
-    set acker [$link link-arq $wndsize $apktsize $ratek $coddth $limit $vgseed $ackerr]
+    set acker [$link link-arq $wndsize $apktsize $ratek $timeout $limit $vgseed $ackerr]
 	return $acker
 }
 
@@ -118,9 +117,14 @@ $ns link-lossmodel $em $n1 $n3
 
 set num_rtx [lindex $argv 7]
 set rate_k [lindex $argv 8]
-set cod_dpth [lindex $argv 9]
+if {[string first "ms" [lindex $argv 9]] != -1} {
+    set timeout_per_string [string map {"ms" ""} [lindex $argv 9]]
+    set timeout_period [expr {double($timeout_per_string)/1000}]
+} else {
+    set timeout_period [lindex $argv 9]
+}
 set apppktSize [lindex $argv 4]
-set receiver [$ns link-arq $window $apppktSize $rate_k $cod_dpth $num_rtx $n1 $n3 [lindex $argv 11] [lindex $argv 6]]
+set receiver [$ns link-arq $window $apppktSize $rate_k $timeout_period $num_rtx $n1 $n3 [lindex $argv 11] [lindex $argv 6]]
 
 #=== Set up a UDP connection ===
 set udp [new Agent/UDP]

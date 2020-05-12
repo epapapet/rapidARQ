@@ -1,6 +1,7 @@
 #include "connector.h"
 #include "ranvar.h"
 #include <set>
+#include <vector>
 #include <map>
 #include <algorithm>
 
@@ -126,9 +127,9 @@ public:
 
 	TetrysPacketStatus *status; //status of received packets
 	set<int> known_packets; //already correctly received packets
-	set<int> lost_packets; //how many packets are lost
-  multimap<int, set<int> > coded_packets; //the received coded pkts that are useful for decoding
   set<int> known_packets_for_ack; //correctly received packets used for creating a cumulative ACK, same as known_packets but not emptied at decoding
+	set<int> lost_packets; //how many packets are lost
+  vector<vector<int>> coded_packets; //the received coded pkts that are useful for decoding
 
 	TetrysNacker* nacker;
 

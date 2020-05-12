@@ -1,6 +1,7 @@
 #include "connector.h"
 #include "ranvar.h"
 #include <set>
+#include <vector>
 #include <map>
 #include <algorithm>
 
@@ -36,11 +37,11 @@ class CaterpillarTx : public Connector {
 	int command(int argc, const char*const* argv);
 	//functions for setting protocol parameters
 	int get_ratek() {return rate_k;}
-	int get_codingdepth() {return coding_depth;}
 	double get_linkdelay() {return lnk_delay_;}
 	double get_linkbw() {return lnk_bw_;}
 	int get_apppktsize() {return app_pkt_Size_;}
 	//functions used in statistics logging
+  double get_wnd() {return wnd_;}
 	double get_start_time() {return start_time;}
 	double get_total_packets_sent() {return packets_sent;}
   double get_total_coded_packets_sent() {return coded_pkts_sent;}
@@ -67,7 +68,6 @@ class CaterpillarTx : public Connector {
 	int most_recent_sq_; //sequence number of most recent frame to be sent
 	int num_pending_retrans_; //number of frames needed to be retransmitted (after the first attempt)
 	int rate_k; //number of native packets sent before coded
-	int coding_depth; //the number of coding cycles used to create a coded
 
 	double lnk_bw_; //the bandwidth of the link_
 	double lnk_delay_; //the delay of the link_
@@ -131,7 +131,7 @@ public:
 	CaterpillarPacketStatus *status; //status of received packets
 	set<int> known_packets; //already correctly received packets
 	set<int> lost_packets; //how many packets are lost
-  multimap<int, set<int> > coded_packets; //the received coded pkts that are useful for decoding
+  vector<vector<int>> coded_packets; //the received coded pkts that are useful for decoding
 
 	CaterpillarNacker* nacker;
 

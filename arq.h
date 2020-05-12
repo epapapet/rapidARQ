@@ -1,6 +1,7 @@
 #include "connector.h"
 #include "ranvar.h"
 #include <set>
+#include <vector>
 #include <map>
 #include <algorithm>
 
@@ -133,7 +134,7 @@ public:
 	PacketStatus *status; //status of received packets
 	set<int> known_packets; //already correctly received packets
 	set<int> lost_packets; //how many packets are lost
-  multimap<int, set<int> > coded_packets; //the received coded pkts that are useful for decoding
+  vector<vector<int>> coded_packets; //the received coded pkts that are useful for decoding
 
 	ARQNacker* nacker;
 
