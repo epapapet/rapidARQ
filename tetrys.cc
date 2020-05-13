@@ -452,8 +452,10 @@ TetrysAcker::TetrysAcker()
   sum_of_delay_jitter = 0; //sum of delay jitter for every packet delivered, used to calculate average delay
 	avg_dec_matrix_size = 0; //the avg size of the decoding matrix when decoding is performed (used to estimate processing overhead)
   max_dec_matrix_size = 0; //the maximum size of the decoding matrix
+  avg_inv_known_pkts_size = 0; //the avg size of the involved_known_packets when decoding is performed (part of decoding matrix already in diagonal form)
+  max_inv_known_pkts_size = 0; //the maximum size of involved_known_packets
   avg_known_pkts_size = 0; //the avg size of the known_packets when decoding is performed (part of decoding matrix already in diagonal form)
-  max_known_pkts_size = 0; //the maximum size of known_pkts
+  max_known_pkts_size = 0; //the maximum size of known_packets
 	num_of_decodings = 0; //number of decoding operations
   avg_pkts_per_decoding = 0; //the average number of decoded packets per decoding
   max_delay = 0; //the maximum delay experienced by a packet
@@ -621,8 +623,8 @@ void TetrysAcker::recv(Packet* p, Handler* h)
 	//--------------------------------------------------------------//
 
 	if (should_check_for_decoding){ //check if decoding is now possible due to the reception of the new pkt (if it is a retransmitted one)
-		known_packets.insert(seq_num); //add newly received pkt
-    known_packets_for_ack.insert(seq_num);
+		involved_known_packets.insert(seq_num); //add newly received pkt
+    known_packets.insert(seq_num); //add newly received pkt
 		decode(h, false); //Check if decoding is now possible
 	}
 
@@ -686,6 +688,8 @@ void TetrysAcker::print_stats()
   printf("Avg num of decoded pkts per decoding:\t%f\n", (num_of_decodings == 0) ? (0):(avg_pkts_per_decoding / num_of_decodings));
   printf("Average decoding matrix size:\t\t%f\n", ( (num_of_decodings == 0) ? (0) : (avg_dec_matrix_size / num_of_decodings) ));
   printf("Max decoding matrix size:\t\t%.0f\n", max_dec_matrix_size);
+  printf("Avg size of known_pkts (inv in dec):\t%f\n", ( (num_of_decodings == 0) ? (0) : (avg_inv_known_pkts_size / num_of_decodings) ));
+  printf("Max size of known_pkts (inv in dec):\t%.0f\n", max_inv_known_pkts_size);
   printf("Average size of known_packets:\t\t%f\n", ( (num_of_decodings == 0) ? (0) : (avg_known_pkts_size / num_of_decodings) ));
   printf("Max size of known_packets:\t\t%.0f\n", max_known_pkts_size);
   printf("//-------------------------------------------------//\n");
@@ -716,7 +720,7 @@ void TetrysAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that r
 		}
 		set<int>:: iterator it;
 		printf("TetrysRx, parse_coded_packet: The known_pkts are: ");
-		for(it = known_packets.begin(); it != known_packets.end(); ++it){
+		for(it = involved_known_packets.begin(); it != involved_known_packets.end(); ++it){
 			printf("%d, ", *(it));
 		}
 		printf(".\n");
@@ -744,7 +748,7 @@ void TetrysAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that r
     coded_pkt_contents.insert(readint);
     coded_pkt_contents_vector.push_back(readint);
 		if (debug) printf("%d", readint);
-		if(known_packets.find(readint) == known_packets.end()){ //is not included in already known
+		if(involved_known_packets.find(readint) == involved_known_packets.end()){ //is not included in already known
 			if (debug) printf("+");
 			lost_packets.insert(readint);
 		}
@@ -766,18 +770,18 @@ void TetrysAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that r
     set_union(lost_packets.begin(),lost_packets.end(),old_lost_packets.begin(),old_lost_packets.end(), std::inserter(unionset,unionset.begin())); //take the union between coded_pkt_contents and lost_packets
     lost_packets = unionset; unionset.clear(); old_lost_packets.clear();
     //set<int>::iterator mmiter;
-    //printf("parse, adding coded pkt.); printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = known_packets.begin(); mmiter != known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n");
+    //printf("parse, adding coded pkt.); printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = involved_known_packets.begin(); mmiter != involved_known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n");
     coded_packets.push_back(coded_pkt_contents_vector); //store new coded pkt
   }
 
 	decode(h,true);
 
   if ((intersect.size() == 0) || (coded_packets.size() == 0)){
-    //If the received coded pkt reset the lost_packets and coded_packets polls or if a decoding occured we need to reset known_packets
+    //If the received coded pkt reset the lost_packets and coded_packets polls or if a decoding occured we need to reset involved_known_packets
     //to the known packets existing in the contents of the received coded pkt
-    //All future coded pkts will contain known_packets with greater seq_nums
-    set_intersection(known_packets.begin(),known_packets.end(),coded_pkt_contents.begin(),coded_pkt_contents.end(), std::inserter(known_intersect,known_intersect.begin())); //take the intersection between coded_pkt_contents and known_packets
-    known_packets.clear(); known_packets = known_intersect; known_intersect.clear();
+    //All future coded pkts will contain involved_known_packets with greater seq_nums
+    set_intersection(involved_known_packets.begin(),involved_known_packets.end(),coded_pkt_contents.begin(),coded_pkt_contents.end(), std::inserter(known_intersect,known_intersect.begin())); //take the intersection between coded_pkt_contents and involved_known_packets
+    involved_known_packets.clear(); involved_known_packets = known_intersect; known_intersect.clear();
   }
   coded_pkt_contents.clear(); //delete contents of coded pkt, no more needed
   coded_pkt_contents_vector.clear();
@@ -793,9 +797,11 @@ void TetrysAcker::decode(Handler* h, bool afterCodedreception){
 	bool decoding_is_possible = false;
 	if (((int)lost_packets.size() <= (int)coded_packets.size()) && (lost_packets.size() > 0)){
 			decoding_is_possible = true;
-			avg_dec_matrix_size = avg_dec_matrix_size + (int) lost_packets.size() + (int) known_packets.size();
-      if (lost_packets.size() + known_packets.size() > max_dec_matrix_size) max_dec_matrix_size = (int) lost_packets.size() + (int) known_packets.size();
+			avg_dec_matrix_size = avg_dec_matrix_size + (int) lost_packets.size() + (int) involved_known_packets.size();
+      if (lost_packets.size() + involved_known_packets.size() > max_dec_matrix_size) max_dec_matrix_size = (int) lost_packets.size() + (int) involved_known_packets.size();
+      avg_inv_known_pkts_size = avg_inv_known_pkts_size + (int) involved_known_packets.size();
       avg_known_pkts_size = avg_known_pkts_size + (int) known_packets.size();
+      if (involved_known_packets.size() > max_inv_known_pkts_size) max_inv_known_pkts_size = (int) involved_known_packets.size();
       if (known_packets.size() > max_known_pkts_size) max_known_pkts_size = (int) known_packets.size();
 			num_of_decodings ++;
       avg_pkts_per_decoding = avg_pkts_per_decoding + lost_packets.size();
@@ -811,8 +817,8 @@ void TetrysAcker::decode(Handler* h, bool afterCodedreception){
   	for(it = lost_packets.begin(); it != lost_packets.end(); ++it){
 
   		int lost_sn = *it;
-  		known_packets.insert(*it); //move decoded frame into known ones
-      known_packets_for_ack.insert(*it);
+  		involved_known_packets.insert(*it); //move decoded frame into known ones
+      known_packets.insert(*it); //move decoded frame into known ones
   		if (debug) printf("TetrysRx, decode: decoding pkt %d.\n", lost_sn);
   		//------------------------------------------//
   		//if ((status[lost_sn%wnd_] != MISSING)) { fprintf(stderr, "Error at TetrysRx::decode, decoded pkt cannot be found or has a wrong status.\n"); abort();}
@@ -883,11 +889,11 @@ Packet* TetrysAcker::create_coded_ack(){
 	Packet *cpkt = Packet::alloc();
 	hdr_cmn *ch2 = HDR_CMN(cpkt);
 	ch2->opt_num_forwards_ = -10001; //coded packet ACK
-	unsigned char *buffer = new unsigned char[sizeof(int)*((int)(known_packets_for_ack.size()) + 1)]; //4 bytes for each decoded frame plus a byte for the counter
+	unsigned char *buffer = new unsigned char[sizeof(int)*((int)(known_packets.size()) + 1)]; //4 bytes for each decoded frame plus a byte for the counter
 
 	int cnt_pkts = 0;
 	set <int> :: iterator itr;
-	for (itr = known_packets_for_ack.begin(); itr != known_packets_for_ack.end(); itr++)
+	for (itr = known_packets.begin(); itr != known_packets.end(); itr++)
 	{
 		*(buffer+sizeof(int)*(cnt_pkts+1)) =  (*itr >> 24) & 0xFF;
 		*(buffer+sizeof(int)*(cnt_pkts+1)+1) = (*itr >> 16) & 0xFF;
@@ -928,8 +934,8 @@ void TetrysAcker::delete_lost_and_associated_coded_from_matrix(int pkt_to_remove
 {
   //Should delete a lost_packet that is now out of the sender's coding window, so no more subsequent coded pkts will contain it
   //In doing so we also need to delete all coded pkts containing the deleted lost pkt because they will no be usefull for decodings
-  //We do not need to update known_packets: we could delete known_packets that are only contained in the deleted coded ones but
-  //the impact in reducing the size of known_packets will be minimal and processing overhead high
+  //We do not need to update involved_known_packets: we could delete involved_known_packets that are only contained in the deleted coded ones but
+  //the impact in reducing the size of involved_known_packets will be minimal and processing overhead high
   vector<vector<int>>::iterator itcodedpkts;
   vector<vector<int>> temp_coded;
   set<int>::iterator mmiter;
@@ -937,7 +943,7 @@ void TetrysAcker::delete_lost_and_associated_coded_from_matrix(int pkt_to_remove
 
   int deleted_lost_pkt = lost_packets.erase(pkt_to_remove);
   if (deleted_lost_pkt > 0){
-    //printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = known_packets.begin(); mmiter != known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Num of coded pkts = %d. Lost pkt deleted is %d.\n", (int)coded_packets.size(), pkt_to_remove);
+    //printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = involved_known_packets.begin(); mmiter != involved_known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Num of coded pkts = %d. Lost pkt deleted is %d.\n", (int)coded_packets.size(), pkt_to_remove);
     for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
         //printf("Coded pkt:"); for (mmiter = (itcodedpkts->second).begin(); mmiter != (itcodedpkts->second).end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf(".\n");
         set<int> temp_set((*itcodedpkts).begin(), (*itcodedpkts).end());
@@ -963,7 +969,7 @@ void TetrysAcker::delete_known_from_matrix(int pkt_to_remove){
   //Should delete a known_packet that is now out of the sender's coding window, so no more subsequent coded pkts will contain it
   //The deletion will take place only if this packet is not involved in a stored coded packet, in which case it is needed for decoding
   vector<vector<int>>::iterator itcodedpkts;
-  known_packets_for_ack.erase(pkt_to_remove);
+  known_packets.erase(pkt_to_remove);
   int should_delete = 0;
   for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
     set<int> temp_set((*itcodedpkts).begin(), (*itcodedpkts).end());
@@ -971,7 +977,7 @@ void TetrysAcker::delete_known_from_matrix(int pkt_to_remove){
     temp_set.clear();
     if (should_delete > 0) return;
   }
-  known_packets.erase(pkt_to_remove);
+  involved_known_packets.erase(pkt_to_remove);
 } //end of delete_known_from_matrix
 
 void TetrysAcker::delete_known_from_matrix_strict(int pkt_to_remove){
@@ -984,8 +990,8 @@ void TetrysAcker::delete_known_from_matrix_strict(int pkt_to_remove){
   set <int> helper;
   set <int> ::iterator iterhelper;
 
-  known_packets_for_ack.erase(pkt_to_remove);
-  int erased_one = known_packets.erase(pkt_to_remove);
+  known_packets.erase(pkt_to_remove);
+  int erased_one = involved_known_packets.erase(pkt_to_remove);
   if (erased_one){
     for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
       set<int> temp_set((*itcodedpkts).begin(), (*itcodedpkts).end());
