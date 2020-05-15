@@ -9,7 +9,7 @@ The folder contains:
 
 ## Running a simulation
 
-### _C-ARQ
+### _C-ARQ_
 
 A simulation with C-ARQ can be executed by using the following syntax:
 
