@@ -152,6 +152,11 @@ void ARQTx::recv(Packet* p, Handler* h)
 		most_recent_sq_ = (most_recent_sq_+1)%sn_cnt;
 
 		native_counter++;
+    vector<int>::iterator it = std::find(most_recent_sent.begin(), most_recent_sent.end(), ch->opt_num_forwards_);
+    if(it == most_recent_sent.end()){
+      if((int) most_recent_sent.size() == coding_wnd) most_recent_sent.erase(most_recent_sent.begin());
+      most_recent_sent.push_back(ch->opt_num_forwards_);
+    }
 		if (native_counter == rate_k){ //prepare a coded frame
 			coded = create_coded_packet();
 			native_counter = 0;
@@ -182,22 +187,24 @@ Packet* ARQTx::create_coded_packet(){ //create a new coded packet with seq nums 
 	ch2->opt_num_forwards_ = -10000 + (most_recent_sq_ - 1 + sn_cnt)%sn_cnt; //indicates a coded packet, SHOULD BE ALWAYS < 0
 
 	unsigned char *buffer = new unsigned char[sizeof(int)*(wnd_+1)]; //maximum of wnd_ sequence numbers plus a counter
-  int far_end_diff = ((most_recent_sq_ - coding_wnd + sn_cnt)%sn_cnt - (last_acked_sq_ + 1)%sn_cnt + sn_cnt)%sn_cnt;
-  int runner_ = ((far_end_diff > 0) && (far_end_diff <= (wnd_ - coding_wnd))) ? (((most_recent_sq_ - coding_wnd + sn_cnt)%sn_cnt)%wnd_) : (((last_acked_sq_ + 1)%sn_cnt)%wnd_);
-  //printf("MR: %d, LA: %d, FED: %d, runner: %d.\n", most_recent_sq_, last_acked_sq_, far_end_diff, fakerunner_);fflush(stdout);
-	int cnt_pkts = 0;
-	do {
-		if((status[runner_] != DROP) && (status[runner_] != ACKED)){ //should not include DROPPED pkts, no need to include ACKED pkts
-			hdr_cmn *ch = HDR_CMN(pkt_buf[runner_]);
-			*(buffer+sizeof(int)*(cnt_pkts+1)) =  (ch->opt_num_forwards_ >> 24) & 0xFF;
-			*(buffer+sizeof(int)*(cnt_pkts+1)+1) = (ch->opt_num_forwards_ >> 16) & 0xFF;
-			*(buffer+sizeof(int)*(cnt_pkts+1)+2) = (ch->opt_num_forwards_ >> 8) & 0xFF;
-			*(buffer+sizeof(int)*(cnt_pkts+1)+3) = ch->opt_num_forwards_ & 0xFF;
-			cnt_pkts++;
-		}
-		runner_ = (runner_ + 1)%wnd_;
-	} while (runner_ != (most_recent_sq_%wnd_));
 
+  vector<int>::iterator it;
+  set<int>::iterator its;
+  int cnt_pkts = 0;
+  set<int> s1(most_recent_sent.begin(), most_recent_sent.end());
+
+  for(its = s1.begin(); its != s1.end(); its++){
+    int runner_ = (*its%sn_cnt)%wnd_;
+    if((status[runner_] != DROP) && (status[runner_] != ACKED)){
+  		hdr_cmn *ch = HDR_CMN(pkt_buf[runner_]);
+  		*(buffer+sizeof(int)*(cnt_pkts+1)) =  (ch->opt_num_forwards_ >> 24) & 0xFF;
+  		*(buffer+sizeof(int)*(cnt_pkts+1)+1) = (ch->opt_num_forwards_ >> 16) & 0xFF;
+  		*(buffer+sizeof(int)*(cnt_pkts+1)+2) = (ch->opt_num_forwards_ >> 8) & 0xFF;
+  		*(buffer+sizeof(int)*(cnt_pkts+1)+3) = ch->opt_num_forwards_ & 0xFF;
+  		cnt_pkts++;
+		}
+  }
+  s1.clear();
 	*(buffer) =  (cnt_pkts >> 24) & 0xFF;
 	*(buffer+1) = (cnt_pkts >> 16) & 0xFF;
 	*(buffer+2) = (cnt_pkts >> 8) & 0xFF;
@@ -340,6 +347,11 @@ void ARQTx::nack(int rcv_sn, int rcv_uid)
 			Packet *newp = pkt_buf[rcv_sn%wnd_]->copy();
       pkt_rtxs++;
       native_counter++;
+      vector<int>::iterator it = std::find(most_recent_sent.begin(), most_recent_sent.end(), rcv_sn);
+      if(it == most_recent_sent.end()){
+        if((int) most_recent_sent.size() == coding_wnd) most_recent_sent.erase(most_recent_sent.begin());
+        most_recent_sent.push_back(rcv_sn);
+      }
       if (native_counter == rate_k){ //prepare a coded frame
         coded = create_coded_packet();
         native_counter = 0;
@@ -381,6 +393,11 @@ void ARQTx::resume()
 		Packet *pnew = (pkt_buf[runner_])->copy();
     pkt_rtxs++;
     native_counter++;
+    vector<int>::iterator it = std::find(most_recent_sent.begin(), most_recent_sent.end(), HDR_CMN(pkt_buf[runner_])->opt_num_forwards_);
+    if(it == most_recent_sent.end()){
+      if((int) most_recent_sent.size() == coding_wnd) most_recent_sent.erase(most_recent_sent.begin());
+      most_recent_sent.push_back(HDR_CMN(pkt_buf[runner_])->opt_num_forwards_);
+    }
 		if (native_counter == rate_k){ //prepare a coded frame
 			coded = create_coded_packet();
 			native_counter = 0;
@@ -424,7 +441,6 @@ int ARQTx::findpos_retrans()
 
 void ARQTx::reset_lastacked()
 {
-
   bool window_advanced = false;
 	if((last_acked_sq_+1)%sn_cnt == most_recent_sq_) return; //no need to reset last_ack because there is no packet stored (MOST RECENT - LAST ACKED = 1)
 
@@ -438,6 +454,10 @@ void ARQTx::reset_lastacked()
 		pkt_uids[runner_] = -1;
 
     window_advanced = true;
+    vector<int>::iterator it = std::find(most_recent_sent.begin(), most_recent_sent.end(), (last_acked_sq_+1)%sn_cnt);
+    if(it != most_recent_sent.end()){ //if seq_num found in most_recent_sent, remove all elements with the same value
+      most_recent_sent.erase(it);
+    }
 		last_acked_sq_ = (last_acked_sq_ + 1)%sn_cnt;
 		runner_ = (runner_ + 1)%wnd_;
 	} while (runner_ != (most_recent_sq_%wnd_));
@@ -447,7 +467,6 @@ void ARQTx::reset_lastacked()
     start_of_pause_period = -1;
   }
 	if(debug) printf("ARQTx, reset_lastacked: new LA(MR) are %d(%d). SimTime=%.8f.\n", last_acked_sq_, most_recent_sq_, Scheduler::instance().clock());
-
 } // end of reset_lastacked
 
 //--------------------------------------------------------------------------------------------//
@@ -470,21 +489,28 @@ ARQRx::ARQRx()
 int ARQRx::command(int argc, const char*const* argv)
 {
 	Tcl& tcl = Tcl::instance();
-	if (argc == 2) {
-		if (strcmp(argv[1], "update-delays") == 0) {
-      bool delayNack = false; //bool variable that controls the value assigned to timeout_. If false, keep timeout = delay.
-			delay_ = arq_tx_->get_linkdelay(); //the propagation delay
-      double nack_delay = (arq_tx_->get_codingdepth() * (arq_tx_->get_ratek() + 1) * 8 * arq_tx_->get_apppktsize())/arq_tx_->get_linkbw() + arq_tx_->get_linkdelay();
-			timeout_ = (delayNack == false) ? (delay_ + 8.0/arq_tx_->get_linkbw()): nack_delay;
-			return(TCL_OK);
-		}
-	} else if (argc == 3) {
+	if (argc == 3) {
 		if (strcmp(argv[1], "attach-ARQTx") == 0) {
 			if (*argv[2] == '0') {
 				tcl.resultf("Cannot attach NULL ARQTx\n");
 				return(TCL_ERROR);
 			}
 			arq_tx_ = (ARQTx*)TclObject::lookup(argv[2]);
+			return(TCL_OK);
+		}
+		if (strcmp(argv[1], "update-delays") == 0) {
+      delay_ = arq_tx_->get_linkdelay(); //the propagation delay
+      timeout_ = delay_ + 8.0/arq_tx_->get_linkbw();
+      /*timeout_ = atof(argv[2]);
+      double max_ack_size = (arq_tx_->get_wnd() + 1)*4.0;
+      double rtt_time = 2*delay_ + 8.0*(arq_tx_->get_apppktsize() + max_ack_size)/arq_tx_->get_linkbw();
+      if (timeout_ > 0) timeout_ = timeout_ - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); //needed to have a timeout equla to argv[3]
+      if (timeout_ == 0){ timeout_ = rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); } //the total timeout is rtt_time
+      if (timeout_ < 0) { timeout_ = -(1.0/timeout_)*rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); } //the total timeout is rtt_time/timeout_*/
+      if (timeout_ < 0) {
+        tcl.resultf("Timeout is too small.\n");
+				return(TCL_ERROR);
+      }
 			return(TCL_OK);
 		}
 	} return Connector::command(argc, argv);
@@ -512,8 +538,10 @@ ARQAcker::ARQAcker()
   sum_of_delay_jitter = 0; //sum of delay jitter for every packet delivered, used to calculate average delay
 	avg_dec_matrix_size = 0; //the avg size of the decoding matrix when decoding is performed (used to estimate processing overhead)
   max_dec_matrix_size = 0; //the maximum size of the decoding matrix
+  avg_inv_known_pkts_size = 0; //the avg size of the involved_known_packets when decoding is performed (part of decoding matrix already in diagonal form)
+  max_inv_known_pkts_size = 0; //the maximum size of involved_known_packets
   avg_known_pkts_size = 0; //the avg size of the known_packets when decoding is performed (part of decoding matrix already in diagonal form)
-  max_known_pkts_size = 0; //the maximum size of known_pkts
+  max_known_pkts_size = 0; //the maximum size of known_packets
 	num_of_decodings = 0; //number of decoding operations
   avg_pkts_per_decoding = 0; //the average number of decoded packets per decoding
   max_delay = 0; //the maximum delay experienced by a packet
@@ -592,7 +620,9 @@ void ARQAcker::recv(Packet* p, Handler* h)
 	int bw_dis = (most_recent_acked - seq_num + sn_cnt)%sn_cnt; //distance of the most recently acked seq_num from the received seq_num
 	bool within_bww = (bw_dis < wnd_) ? (true) : (false); //bool to indicate whether the new frame is (or not) within the ARQTx's active window as seen by ARQRx (backward window)
 	int oldest_sq_sender = (most_recent_acked - arq_tx_->get_coding_wnd() + 1 + sn_cnt)%sn_cnt; //the lower bound of ARQTx's active window as seen by ARQRx before receiving seq_num
-	int new_oldest_sq_sender = (seq_num - arq_tx_->get_coding_wnd() + 1 + sn_cnt)%sn_cnt; //the lower bound of ARQTx's active window as seen by ARQRx after receiving seq_num
+	int new_oldest_sq_sender = (seq_num - arq_tx_->get_coding_wnd() + 1 + sn_cnt)%sn_cnt; //the lower bound of ARQTx's active coding window as seen by ARQRx after receiving seq_num
+  int oldest_sq = (most_recent_acked - wnd_ + 1 + sn_cnt)%sn_cnt; //the lower bound of ARQTx's active coding window as seen by ARQRx before receiving seq_num
+  int new_oldest_sq = (seq_num - wnd_ + 1 + sn_cnt)%sn_cnt; //the lower bound of ARQTx's active window as seen by ARQRx after receiving seq_num
 
 	int nxt_seq = (last_fwd_sn_ + 1)%sn_cnt; //the next expected seq_num
 
@@ -639,7 +669,8 @@ void ARQAcker::recv(Packet* p, Handler* h)
 		if (fw_dis > fw_width) { //the new frames is beyond the most_recent_acked
 			for (int i = (most_recent_acked + 1)%sn_cnt; i != seq_num; i = (i + 1)%sn_cnt){ status[i%wnd_] = MISSING; } //update positions in between with MISSING state
 			most_recent_acked = seq_num;
-			clean_decoding_matrix(oldest_sq_sender, new_oldest_sq_sender); //remove from the coding structures the frames that are now out of ARQTx's active window
+			clean_decoding_matrix(oldest_sq, new_oldest_sq); //remove from the coding structures the frames that are now out of ARQTx's active coding window
+      clean_known_packets(oldest_sq, new_oldest_sq); //remove frames that are out of ARQTx's active wnd
 		}
 
 	} else if (within_bww && !within_fww) {//frame belongs to the backward window (i.e., ARQTx's active window), so it is a retransmitted frame due to loss of ACK
@@ -661,7 +692,8 @@ void ARQAcker::recv(Packet* p, Handler* h)
 		deliver_frames(wnd_, true, h); //check if it is possible to deliver in order frames
 		for (int i = (most_recent_acked + 1)%sn_cnt; i != seq_num; i = (i + 1)%sn_cnt){ status[i%wnd_] = MISSING; } //update positions between most_recent_acked and the new sequence number with MISSING state
 		most_recent_acked = seq_num;
-		clean_decoding_matrix(oldest_sq_sender, new_oldest_sq_sender); //remove from the coding structures the frames that are now out of ARQTx's active window
+		clean_decoding_matrix(oldest_sq, new_oldest_sq); //remove from the coding structures the frames that are now out of ARQTx's active coding window
+    clean_known_packets(oldest_sq, new_oldest_sq); //remove frames that are out of ARQTx's active wnd
 	}
 
 	//-----Schedule ACK----------------//
@@ -679,7 +711,8 @@ void ARQAcker::recv(Packet* p, Handler* h)
 	//---------------------------------//
 
 	if (should_check_for_decoding){ //check if decoding is now possible due to the reception of the new pkt (if it is a retransmitted one)
-		known_packets.insert(seq_num); //add newly received pkt
+    involved_known_packets.insert(seq_num);
+    known_packets.insert(seq_num); //add newly received pkt
 		delete_lost_and_find_associated_coded_in_matrix(seq_num); //delete received pkt from lost and delete coded pkts containing only this lost
 		decode(h, false); //Check if decoding is now possible
 	}
@@ -745,6 +778,8 @@ void ARQAcker::print_stats()
   printf("Avg num of decoded pkts per decoding:\t%f\n", (num_of_decodings == 0) ? (0):(avg_pkts_per_decoding / num_of_decodings));
 	printf("Average decoding matrix size:\t\t%f\n", ( (num_of_decodings == 0) ? (0) : (avg_dec_matrix_size / num_of_decodings) ));
   printf("Max decoding matrix size:\t\t%.0f\n", max_dec_matrix_size);
+  printf("Avg size of known_pkts (inv in dec):\t%f\n", ( (num_of_decodings == 0) ? (0) : (avg_inv_known_pkts_size / num_of_decodings) ));
+  printf("Max size of known_pkts (inv in dec):\t%.0f\n", max_inv_known_pkts_size);
   printf("Average size of known_packets:\t\t%f\n", ( (num_of_decodings == 0) ? (0) : (avg_known_pkts_size / num_of_decodings) ));
   printf("Max size of known_packets:\t\t%.0f\n", max_known_pkts_size);
   printf("//-------------------------------------------------//\n");
@@ -779,6 +814,11 @@ void ARQAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that read
 			printf("%d, ", *(it));
 		}
 		printf(".\n");
+    printf("ARQRx, parse_coded_packet: The involved_known_pkts are: ");
+		for(it = involved_known_packets.begin(); it != involved_known_packets.end(); ++it){
+			printf("%d, ", *(it));
+		}
+		printf(".\n");
 		printf("ARQRx, parse_coded_packet: The lost_pkts are: ");
 		for(it = lost_packets.begin(); it != lost_packets.end(); ++it){
 			printf("%d, ", *(it));
@@ -807,6 +847,8 @@ void ARQAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that read
 			if (debug) printf("+");
 			lost_packets.insert(readint);
 		}
+    //if packet is included in known_packets but not in involved_known_packets, insert it to the latter
+    if(known_packets.find(readint) != known_packets.end() && involved_known_packets.find(readint) == involved_known_packets.end()) involved_known_packets.insert(readint);
 		if (debug) printf(", ");
 	}
 	if (debug) printf(".\n");
@@ -825,18 +867,18 @@ void ARQAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that read
     set_union(lost_packets.begin(),lost_packets.end(),old_lost_packets.begin(),old_lost_packets.end(), std::inserter(unionset,unionset.begin())); //take the union between coded_pkt_contents and lost_packets
     lost_packets = unionset; unionset.clear(); old_lost_packets.clear();
     //set<int>::iterator mmiter;
-    //printf("parse, adding coded pkt. "); printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = known_packets.begin(); mmiter != known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n");
+    //printf("parse, adding coded pkt. "); printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = involved_known_packets.begin(); mmiter != involved_known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n");
     coded_packets.push_back(coded_pkt_contents_vector); //store new coded pkt
   }
 
 	decode(h,true);
 
   if ((intersect.size() == 0) || (coded_packets.size() == 0)){
-    //If the received coded pkt reset the lost_packets and coded_packets polls or if a decoding occured we need to reset known_packets
+    //If the received coded pkt reset the lost_packets and coded_packets polls or if a decoding occured we need to reset involved_known_packets
     //to the known packets existing in the contents of the received coded pkt
-    //All future coded pkts will contain known_packets with greater seq_nums
-    set_intersection(known_packets.begin(),known_packets.end(),coded_pkt_contents.begin(),coded_pkt_contents.end(), std::inserter(known_intersect,known_intersect.begin())); //take the intersection between coded_pkt_contents and known_packets
-    known_packets.clear(); known_packets = known_intersect; known_intersect.clear();
+    //All future coded pkts will contain involved_known_packets with greater seq_nums
+    set_intersection(involved_known_packets.begin(),involved_known_packets.end(),coded_pkt_contents.begin(),coded_pkt_contents.end(), std::inserter(known_intersect,known_intersect.begin())); //take the intersection between coded_pkt_contents and involved_known_packets
+    involved_known_packets.clear(); involved_known_packets = known_intersect; known_intersect.clear();
   }
   coded_pkt_contents.clear(); //delete contents of coded pkt, no more needed
   coded_pkt_contents_vector.clear();
@@ -852,9 +894,11 @@ void ARQAcker::decode(Handler* h, bool afterCodedreception){
 	bool decoding_is_possible = false;
 	if (((int)lost_packets.size() <= (int)coded_packets.size()) && (lost_packets.size() > 0)){
 			decoding_is_possible = true;
-			avg_dec_matrix_size = avg_dec_matrix_size + (int) lost_packets.size() + (int) known_packets.size();
-      if (lost_packets.size() + known_packets.size() > max_dec_matrix_size) max_dec_matrix_size = (int) lost_packets.size() + (int) known_packets.size();
+			avg_dec_matrix_size = avg_dec_matrix_size + (int) lost_packets.size() + (int) involved_known_packets.size();
+      if (lost_packets.size() + involved_known_packets.size() > max_dec_matrix_size) max_dec_matrix_size = (int) lost_packets.size() + (int) involved_known_packets.size();
+      avg_inv_known_pkts_size = avg_inv_known_pkts_size + (int) involved_known_packets.size();
       avg_known_pkts_size = avg_known_pkts_size + (int) known_packets.size();
+      if (involved_known_packets.size() > max_inv_known_pkts_size) max_inv_known_pkts_size = (int) involved_known_packets.size();
       if (known_packets.size() > max_known_pkts_size) max_known_pkts_size = (int) known_packets.size();
 			num_of_decodings ++;
       avg_pkts_per_decoding = avg_pkts_per_decoding + lost_packets.size();
@@ -863,13 +907,13 @@ void ARQAcker::decode(Handler* h, bool afterCodedreception){
 
 
   if (decoding_is_possible){
-    int fw_dis, fw_width, bw_dis, oldest_sq_sender, new_oldest_sq_sender, nxt_seq, first_st;
+    int fw_dis, fw_width, bw_dis, oldest_sq_sender, new_oldest_sq_sender, oldest_sq, new_oldest_sq, nxt_seq, first_st;
     bool within_fww, within_bww;
 
   	set<int>:: iterator it;
   	for(it = lost_packets.begin(); it != lost_packets.end(); ++it){
-
   		int lost_sn = *it;
+      involved_known_packets.insert(*it);
   		known_packets.insert(*it); //move decoded frame into known ones
   		if (debug) printf("ARQRx, decode: decoding pkt %d.\n", lost_sn);
   		//------------------------------------------//
@@ -883,6 +927,8 @@ void ARQAcker::decode(Handler* h, bool afterCodedreception){
   		within_bww = (bw_dis < wnd_) ? (true) : (false);
       oldest_sq_sender = (most_recent_acked - arq_tx_->get_coding_wnd() + 1 + sn_cnt)%sn_cnt;
   		new_oldest_sq_sender = (lost_sn - arq_tx_->get_coding_wnd() + 1 + sn_cnt)%sn_cnt;
+      oldest_sq = (most_recent_acked - wnd_ + 1 + sn_cnt)%sn_cnt;
+      new_oldest_sq = (lost_sn - wnd_ + 1 + sn_cnt)%sn_cnt;
   		nxt_seq = (last_fwd_sn_ + 1)%sn_cnt;
 
   		if (within_fww){ //decoded frame is in the forward window
@@ -911,7 +957,8 @@ void ARQAcker::decode(Handler* h, bool afterCodedreception){
   			if (fw_dis > fw_width) { //if the decoded frame is beyond the most_recent_acked
   				for (int j = (most_recent_acked + 1)%sn_cnt; j != lost_sn; j = (j + 1)%sn_cnt){ status[j%wnd_] = MISSING; } //updtae the positions in between with the MISSING state
   				most_recent_acked = lost_sn;
-  				clean_decoding_matrix(oldest_sq_sender, new_oldest_sq_sender); //remove from the coding structures the frames that are now outside the backward window (i.e., ARQTx's active window)
+  				clean_decoding_matrix(oldest_sq, new_oldest_sq); //remove from the coding structures the frames that are now out of ARQTx's active coding window
+          clean_known_packets(oldest_sq, new_oldest_sq);
   			}
   		} else if (within_bww && !within_fww){ //decode frame is in the backward window, so do nothing beyond ACKing the frame
 
@@ -924,7 +971,8 @@ void ARQAcker::decode(Handler* h, bool afterCodedreception){
   			deliver_frames(wnd_, true, h); //check if it is possible to deliver in order frames
   			for (int j = (most_recent_acked + 1)%sn_cnt; j != lost_sn; j = (j + 1)%sn_cnt){ status[j%wnd_] = MISSING; } //update positions beyond most_recent_acked up to the decoded frame with the MISSING state
   			most_recent_acked = lost_sn;
-  			clean_decoding_matrix(oldest_sq_sender, new_oldest_sq_sender); //remove from the coding structures the frames that are now outside the backward window (i.e., ARQTx's active window)
+  			clean_decoding_matrix(oldest_sq, new_oldest_sq); //remove from the coding structures the frames that are now out of ARQTx's active coding window
+        clean_known_packets(oldest_sq, new_oldest_sq);
   		}
   	} //end for
   } //end if
@@ -998,20 +1046,28 @@ void ARQAcker::clean_decoding_matrix(int from, int to)
 	} while (runner_ != to);
 } //end of clean_decoding_matrix
 
+void ARQAcker::clean_known_packets(int from, int to){
+  int runner_ = from;
+	do {
+    known_packets.erase(runner_);
+		runner_ = (runner_ + 1)%sn_cnt;
+	} while (runner_ != to);
+}
+
 void ARQAcker::delete_lost_and_associated_coded_from_matrix(int pkt_to_remove)
 {
   //Should delete a lost_packet that is now out of the sender's coding window, so no more subsequent coded pkts will contain it
   //In doing so we also need to delete all coded pkts containing the deleted lost pkt because they will no be usefull for decodings
-  //We do not need to update known_packets: we could delete known_packets that are only contained in the deleted coded ones but
-  //the impact in reducing the size of known_packets will be minimal and processing overhead high
-  vector<vector<int>>::iterator itcodedpkts;
-  vector<vector<int>> temp_coded;
+  //We do not need to update involved_known_packets: we could delete involved_known_packets that are only contained in the deleted coded ones but
+  //the impact in reducing the size of involved_known_packets will be minimal and processing overhead high
+  vector<vector<int> >::iterator itcodedpkts;
+  vector<vector<int> > temp_coded;
   set<int>::iterator mmiter;
   set<int> intersect;
 
   int deleted_lost_pkt = lost_packets.erase(pkt_to_remove);
   if (deleted_lost_pkt > 0){
-    //printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = known_packets.begin(); mmiter != known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Num of coded pkts = %d. Lost pkt deleted is %d.\n", (int)coded_packets.size(), pkt_to_remove);
+    //printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = involved_known_packets.begin(); mmiter != involved_known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Num of coded pkts = %d. Lost pkt deleted is %d.\n", (int)coded_packets.size(), pkt_to_remove);
     for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
         //printf("Coded pkt:"); for (mmiter = (itcodedpkts->second).begin(); mmiter != (itcodedpkts->second).end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf(".\n");
         set<int> temp_set((*itcodedpkts).begin(), (*itcodedpkts).end());
@@ -1038,16 +1094,16 @@ void ARQAcker::delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove
 {
   //Should delete a lost_packet that turned into known (through a retransmission)
   //In doing so we also need to delete all coded pkts containing only this lost_packet because they are no more usefull in decodings
-  //We do not need to update known_packets: we could delete known_packets that are only contained in the deleted coded ones but
-  //the impact in reducing the size of known_packets will be minimal and processing overhead high
-  vector<vector<int>>::iterator itcodedpkts;
-  vector<vector<int>> temp_coded;
+  //We do not need to update involved_known_packets: we could delete involved_known_packets that are only contained in the deleted coded ones but
+  //the impact in reducing the size of involved_known_packets will be minimal and processing overhead high
+  vector<vector<int> >::iterator itcodedpkts;
+  vector<vector<int> > temp_coded;
   set<int>::iterator mmiter;
   set<int> intersect;
 
   int deleted_lost_pkt = lost_packets.erase(pkt_to_remove);
   if (deleted_lost_pkt > 0){
-    //printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = known_packets.begin(); mmiter != known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Num of coded pkts = %d. Lost pkt deleted is %d.\n", (int)coded_packets.size(), pkt_to_remove);
+    //printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = involved_known_packets.begin(); mmiter != involved_known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Num of coded pkts = %d. Lost pkt deleted is %d.\n", (int)coded_packets.size(), pkt_to_remove);
     for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
         //printf("Coded pkt:"); for (mmiter = (itcodedpkts->second).begin(); mmiter != (itcodedpkts->second).end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf(".\n");
         set<int> temp_set((*itcodedpkts).begin(), (*itcodedpkts).end());
@@ -1075,7 +1131,7 @@ void ARQAcker::delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove
 void ARQAcker::delete_known_from_matrix(int pkt_to_remove){
   //Should delete a known_packet that is now out of the sender's coding window, so no more subsequent coded pkts will contain it
   //The deletion will take place only if this packet is not involved in a stored coded packet, in which case it is needed for decoding
-  vector<vector<int>>::iterator itcodedpkts;
+  vector<vector<int> >::iterator itcodedpkts;
   int should_delete = 0;
   for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
     set<int> temp_set((*itcodedpkts).begin(), (*itcodedpkts).end());
@@ -1083,20 +1139,20 @@ void ARQAcker::delete_known_from_matrix(int pkt_to_remove){
     temp_set.clear();
     if (should_delete > 0) return;
   }
-  known_packets.erase(pkt_to_remove);
+  involved_known_packets.erase(pkt_to_remove);
 } //end of delete_known_from_matrix
 
 void ARQAcker::delete_known_from_matrix_strict(int pkt_to_remove){
   //Should delete a known_packet that is now out of the sender's coding window
   //Should also delete affected coded packets as well as lost ones
-  vector<vector<int>>::iterator itcodedpkts;
-  vector<vector<int>> temp_coded;
+  vector<vector<int> >::iterator itcodedpkts;
+  vector<vector<int> > temp_coded;
   set <int> affected_pkts;
   set <int> not_affected_pkts;
   set <int> helper;
   set <int> ::iterator iterhelper;
 
-  int erased_one = known_packets.erase(pkt_to_remove);
+  int erased_one = involved_known_packets.erase(pkt_to_remove);
   if (erased_one){
     for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
       set<int> temp_set((*itcodedpkts).begin(), (*itcodedpkts).end());

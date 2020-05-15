@@ -132,7 +132,7 @@ public:
 	set<int> involved_known_packets; //already correctly received packets involved in coded_packets
   set<int> known_packets; //correctly received packets (used for creating a cumulative ACK)
 	set<int> lost_packets; //how many packets are lost
-  vector<vector<int>> coded_packets; //the received coded pkts that are useful for decoding
+  vector<vector<int> > coded_packets; //the received coded pkts that are useful for decoding
 
 	CaterpillarNacker* nacker;
 

@@ -9,7 +9,7 @@ if {$arg_cnt != 11} {
     puts "# <ack_rate> : the error rate in the return channel (error rate for ACKs)"
     puts "# <num_rtx> : the number of retransmissions allowed for a native pkt"
     puts "# <rate_k> : the number of native pkts sent before creating a coded pkt (actually define the code rate)"
-    puts "* <timeout> : the time for expiring an non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v"
+    puts "# <timeout> : the time for expiring an non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v"
     puts "# <simulation_time> : the simulation time in secs"
     puts "# <seed> : seed used to produce randomness"
     exit 1

@@ -1,5 +1,5 @@
 set arg_cnt [lindex $argc]
-if {$arg_cnt != 11} {
+if {$arg_cnt != 12} {
     puts "# usage: ns <scriptfile> <bandwidth> <propagation_delay> <window_size> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <simulation_time> <seed>"
     puts "# <bandwidth> : in bps, example: set to 5Mbps -> 5M or 5000000"
     puts "# <propagation_delay> : in secs, example: set to 30ms -> 30ms or 0.03"
@@ -10,6 +10,7 @@ if {$arg_cnt != 11} {
     puts "# <num_rtx> : the number of retransmissions allowed for a native pkt"
     puts "# <rate_k> : the number of native pkts sent before creating a coded pkt (actually define the code rate)"
     puts "# <coding_depth> : the number of coding cycles used to create a coded pkt"
+	puts "# <timeout> : the time for expiring an non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v"
     puts "# <simulation_time> : the simulation time in secs"
     puts "# <seed> : seed used to produce randomness"
     exit 1
@@ -25,7 +26,7 @@ ARQTx set debug_ NULL
 ARQAcker set debug_ NULL
 ARQNacker set debug_ NULL
 
-SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth limit vgseed ackerr } {
+SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth timeoutt limit vgseed ackerr } {
     $self instvar link_ link_errmodule_ queue_ drophead_ head_
     $self instvar tARQ_ acker_ nacker_
  
@@ -45,7 +46,7 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth limit vgseed ackerr
     $acker_ attach-ARQTx $tARQ_
     $acker_ setup-ARQNacker $nacker_
     $acker_ setup-wnd $wndsize
-    $acker_ update-delays
+    $acker_ update-delays $timeoutt
     
     set vagrngn2 [new RNG]
     $vagrngn2 seed [expr {$vgseed + 1}]
@@ -58,7 +59,7 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth limit vgseed ackerr
     #Nacker set up
     $nacker_ attach-ARQTx $tARQ_
 	$nacker_ setup-ARQAcker $acker_
-    $nacker_ update-delays
+    $nacker_ update-delays $timeoutt
 
     
     #Connections between Tx, Acker, Nacker, queue, drop-target and Acker target
@@ -72,9 +73,9 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth limit vgseed ackerr
 	return $acker_
 }
 
-Simulator instproc link-arq {wndsize apktsize ratek coddth limit from to vgseed ackerr} {
+Simulator instproc link-arq {wndsize apktsize ratek coddth timeout limit from to vgseed ackerr} {
     set link [$self link $from $to]
-    set acker [$link link-arq $wndsize $apktsize $ratek $coddth $limit $vgseed $ackerr]
+    set acker [$link link-arq $wndsize $apktsize $ratek $coddth $timeout $limit $vgseed $ackerr]
 	return $acker
 }
 
@@ -111,7 +112,7 @@ $em unit pkt
 $em set bandwidth_ $link_bwd
 
 set vagrng [new RNG]
-$vagrng seed [lindex $argv 10]
+$vagrng seed [lindex $argv 11]
 set vagranvar [new RandomVariable/Uniform]
 $vagranvar use-rng $vagrng
 
@@ -123,8 +124,14 @@ $ns link-lossmodel $em $n1 $n3
 set num_rtx [lindex $argv 6]
 set rate_k [lindex $argv 7]
 set cod_dpth [lindex $argv 8]
+if {[string first "ms" [lindex $argv 9]] != -1} {
+    set timeout_per_string [string map {"ms" ""} [lindex $argv 9]]
+    set timeout_period [expr {double($timeout_per_string)/1000}]
+} else {
+    set timeout_period [lindex $argv 9]
+}
 set apppktSize [lindex $argv 3]
-set receiver [$ns link-arq $window $apppktSize $rate_k $cod_dpth $num_rtx $n1 $n3 [lindex $argv 10] [lindex $argv 5]]
+set receiver [$ns link-arq $window $apppktSize $rate_k $cod_dpth $timeout_period $num_rtx $n1 $n3 [lindex $argv 11] [lindex $argv 5]]
 
 #=== Set up a UDP connection ===
 set tcp [new Agent/TCP]
@@ -138,8 +145,8 @@ $ftp attach-agent $tcp
 $ns connect $tcp $sink
 
 $ns at 0.0 "$ftp start"
-$ns at [lindex $argv 9] "$ftp stop"
-$ns at [expr {[lindex $argv 9] + 0.51}] show_tcp_seqno
-$ns at [expr {[lindex $argv 9] + 0.5}] print_stats
-$ns at [expr {[lindex $argv 9] + 1.0}] "exit 0"
+$ns at [lindex $argv 10] "$ftp stop"
+$ns at [expr {[lindex $argv 10] + 0.51}] show_tcp_seqno
+$ns at [expr {[lindex $argv 10] + 0.5}] print_stats
+$ns at [expr {[lindex $argv 10] + 1.0}] "exit 0"
 $ns run

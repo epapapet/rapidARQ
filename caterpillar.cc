@@ -1010,8 +1010,8 @@ void CaterpillarAcker::delete_lost_and_associated_coded_from_matrix(int pkt_to_r
   //In doing so we also need to delete all coded pkts containing the deleted lost pkt because they will no be usefull for decodings
   //We do not need to update involved_known_packets: we could delete involved_known_packets that are only contained in the deleted coded ones but
   //the impact in reducing the size of involved_known_packets will be minimal and processing overhead high
-  vector<vector<int>>::iterator itcodedpkts;
-  vector<vector<int>> temp_coded;
+  vector<vector<int> >::iterator itcodedpkts;
+  vector<vector<int> > temp_coded;
   set<int>::iterator mmiter;
   set<int> intersect;
 
@@ -1046,8 +1046,8 @@ void CaterpillarAcker::delete_lost_and_find_associated_coded_in_matrix(int pkt_t
   //In doing so we also need to delete all coded pkts containing only this lost_packet because they are no more usefull in decodings
   //We do not need to update involved_known_packets: we could delete involved_known_packets that are only contained in the deleted coded ones but
   //the impact in reducing the size of involved_known_packets will be minimal and processing overhead high
-  vector<vector<int>>::iterator itcodedpkts;
-  vector<vector<int>> temp_coded;
+  vector<vector<int> >::iterator itcodedpkts;
+  vector<vector<int> > temp_coded;
   set<int>::iterator mmiter;
   set<int> intersect;
 
@@ -1081,7 +1081,7 @@ void CaterpillarAcker::delete_lost_and_find_associated_coded_in_matrix(int pkt_t
 void CaterpillarAcker::delete_known_from_matrix(int pkt_to_remove){
   //Should delete a known_packet that is now out of the sender's coding window, so no more subsequent coded pkts will contain it
   //The deletion will take place only if this packet is not involved in a stored coded packet, in which case it is needed for decoding
-  vector<vector<int>>::iterator itcodedpkts;
+  vector<vector<int> >::iterator itcodedpkts;
   known_packets.erase(pkt_to_remove);
   int should_delete = 0;
   for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
@@ -1096,8 +1096,8 @@ void CaterpillarAcker::delete_known_from_matrix(int pkt_to_remove){
 void CaterpillarAcker::delete_known_from_matrix_strict(int pkt_to_remove){
   //Should delete a known_packet that is now out of the sender's coding window
   //Should also delete affected coded packets as well as lost ones
-  vector<vector<int>>::iterator itcodedpkts;
-  vector<vector<int>> temp_coded;
+  vector<vector<int> >::iterator itcodedpkts;
+  vector<vector<int> > temp_coded;
   set <int> affected_pkts;
   set <int> not_affected_pkts;
   set <int> helper;

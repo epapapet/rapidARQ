@@ -63,6 +63,7 @@ class ARQTx : public Connector {
 	ARQStatus *status; //the status of each frame under transmission
 	int *num_rtxs; //number of retransmisions for each frame under transmission
 	int *pkt_uids; //used for debugging purposes
+  vector<int> most_recent_sent; //|coding_wnd| last sent packets (new ones or retransmissions)
 
 	int blocked_; //switch set to 1 when Tx engaged in transmiting a frame, 0 otherwise
 	int last_acked_sq_; //sequence number of last acked frame
@@ -132,9 +133,10 @@ public:
 	double err_rate; //the rate of errors in ACK delivery
 
 	PacketStatus *status; //status of received packets
-	set<int> known_packets; //already correctly received packets
+  set<int> involved_known_packets; //already correctly received packets involved in coded_packets
+  set<int> known_packets; //correctly received packets (used for creating a cumulative ACK)
 	set<int> lost_packets; //how many packets are lost
-  vector<vector<int>> coded_packets; //the received coded pkts that are useful for decoding
+  vector<vector<int> > coded_packets; //the received coded pkts that are useful for decoding
 
 	ARQNacker* nacker;
 
@@ -148,6 +150,8 @@ public:
   double sum_of_delay_jitter; //sum of delay jitter for every packet delivered, used to calculate average delay
   double avg_dec_matrix_size; //the avg size of the decoding matrix when decoding is performed (used to estimate processing overhead)
   double max_dec_matrix_size; //the maximum size of decoding matrix
+  double avg_inv_known_pkts_size; //the avg size of the involved_known_packets when decoding is performed
+  double max_inv_known_pkts_size; //the maximum size of involved_known_packets
   double avg_known_pkts_size; //the avg size of the known_packets when decoding is performed (part of decoding matrix already in diagonal form)
   double max_known_pkts_size; //the maximum size of known_packets
 	double num_of_decodings; //number of decoding operations
@@ -158,6 +162,7 @@ public:
 
 	void deliver_frames(int steps, bool mindgaps, Handler *h);
 	void clean_decoding_matrix(int from, int to);
+  void clean_known_packets(int from, int to); //function that updates known_packets' contents based on sender's window estimation
   void delete_lost_and_associated_coded_from_matrix(int pkt_to_remove);
   void delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove);
   void delete_known_from_matrix(int pkt_to_remove);
