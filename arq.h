@@ -43,6 +43,7 @@ class ARQTx : public Connector {
 	double get_linkbw() {return lnk_bw_;}
 	int get_apppktsize() {return app_pkt_Size_;}
 	//functions used in statistics logging
+  double get_wnd() {return wnd_;}
 	double get_start_time() {return start_time;}
 	double get_total_packets_sent() {return packets_sent;}
   double get_total_coded_packets_sent() {return coded_pkts_sent;}

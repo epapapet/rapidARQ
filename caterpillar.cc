@@ -472,13 +472,13 @@ int CaterpillarRx::command(int argc, const char*const* argv)
 		}
     if (strcmp(argv[1], "update-delays") == 0) {
       delay_ = arq_tx_->get_linkdelay(); //the propagation delay
-      timeout_ = delay_ + 8.0/arq_tx_->get_linkbw();
-      /*timeout_ = atof(argv[2]);
+      //timeout_ = delay_ + 8.0/arq_tx_->get_linkbw();
+      timeout_ = atof(argv[2]);
       double max_ack_size = (arq_tx_->get_wnd() + 1)*4.0;
       double rtt_time = 2*delay_ + 8.0*(arq_tx_->get_apppktsize() + max_ack_size)/arq_tx_->get_linkbw();
       if (timeout_ > 0) timeout_ = timeout_ - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); //needed to have a timeout equla to argv[3]
       if (timeout_ == 0){ timeout_ = rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); } //the total timeout is rtt_time
-      if (timeout_ < 0) { timeout_ = -(1.0/timeout_)*rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); } //the total timeout is rtt_time/timeout_*/
+      if (timeout_ < 0) { timeout_ = -(1.0/timeout_)*rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); } //the total timeout is rtt_time/timeout_
       if (timeout_ < 0) {
         tcl.resultf("Timeout is too small.\n");
 				return(TCL_ERROR);
