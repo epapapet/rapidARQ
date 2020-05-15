@@ -475,11 +475,12 @@ int CaterpillarRx::command(int argc, const char*const* argv)
       //timeout_ = delay_ + 8.0/arq_tx_->get_linkbw();
       timeout_ = atof(argv[2]);
       double max_ack_size = (arq_tx_->get_wnd() + 1)*4.0;
+      double minimum_rtt_time = 2*delay_ + 8.0*(arq_tx_->get_apppktsize() + 1)/arq_tx_->get_linkbw();
       double rtt_time = 2*delay_ + 8.0*(arq_tx_->get_apppktsize() + max_ack_size)/arq_tx_->get_linkbw();
       if (timeout_ > 0) timeout_ = timeout_ - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); //needed to have a timeout equla to argv[3]
       if (timeout_ == 0){ timeout_ = rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); } //the total timeout is rtt_time
       if (timeout_ < 0) { timeout_ = -(1.0/timeout_)*rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); } //the total timeout is rtt_time/timeout_
-      if (timeout_ < 0) {
+      if (timeout_ < minimum_rtt_time) {
         tcl.resultf("Timeout is too small.\n");
 				return(TCL_ERROR);
       }
