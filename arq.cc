@@ -507,7 +507,7 @@ int ARQRx::command(int argc, const char*const* argv)
       if (timeout_ > 0) timeout_ = timeout_ - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); //needed to have a timeout equal to argv[2]
       if (timeout_ == 0){ timeout_ = rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); } //the total timeout is rtt_time
       if (timeout_ < 0) { timeout_ = -(1.0/timeout_)*rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); } //the total timeout is rtt_time/timeout_
-      if (timeout_ < minimum_rtt_time) {
+      if (timeout_ < minimum_rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw()) {
         tcl.resultf("Timeout is too small.\n");
 				return(TCL_ERROR);
       }
