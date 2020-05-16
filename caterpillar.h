@@ -6,7 +6,7 @@
 #include <algorithm>
 
 class CaterpillarTx;
-enum CaterpillarARQStatus {IDLE,SENT,ACKED,RTX,DROP}; //statuses for packets sent by CaterpillarTx
+enum CaterpillarARQStatus {IDLE,SENT,ACKED,RTX,RTXPRE,DROP}; //statuses for packets sent by CaterpillarTx
 enum CaterpillarPacketStatus {NONE,MISSING,RECEIVED,DECODED}; //for CaterpillarAcker, in order to tell apart different types of packets
 
 class CaterpillarHandler : public Handler {
@@ -30,6 +30,7 @@ class CaterpillarTx : public Connector {
 	CaterpillarTx();
 	void recv(Packet*, Handler*);
 	void nack(int rcv_sn, int rcv_uid);
+  bool nack_incr(int rcv_sn);
 	void ack(int rcv_sn, int rcv_uid);
 	void ack(Packet *p); //overloaded ack method
   bool ack_incr(int rcv_sn);
@@ -62,6 +63,7 @@ class CaterpillarTx : public Connector {
 	CaterpillarARQStatus *status; //the status of each frame under transmission
 	int *num_rtxs; //number of retransmisions for each frame under transmission
 	int *pkt_uids; //used for debugging purposes
+  double *sent_time; //the time a packet was transmitted (either when it is a new packet or a retransmission)
 
 	int blocked_; //switch set to 1 when Tx engaged in transmiting a frame, 0 otherwise
 	int last_acked_sq_; //sequence number of last acked frame
@@ -72,6 +74,7 @@ class CaterpillarTx : public Connector {
 	double lnk_bw_; //the bandwidth of the link_
 	double lnk_delay_; //the delay of the link_
 	int app_pkt_Size_; //the size of the pkt created by the app_pkt_Size_
+  double timeout_; //the period of time waiting for receiving an ack
 
 	bool debug;
 
@@ -131,6 +134,7 @@ public:
 	CaterpillarPacketStatus *status; //status of received packets
 	set<int> involved_known_packets; //already correctly received packets involved in coded_packets
   set<int> known_packets; //correctly received packets (used for creating a cumulative ACK)
+  set<int> seen_packets; //the set of seen packets
 	set<int> lost_packets; //how many packets are lost
   vector<vector<int> > coded_packets; //the received coded pkts that are useful for decoding
 
@@ -162,6 +166,7 @@ public:
   void delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove);
   void delete_known_from_matrix(int pkt_to_remove);
   void delete_known_from_matrix_strict(int pkt_to_remove);
+  void repopulate_seen_packets();
 
  private:
 	Packet* create_coded_ack();

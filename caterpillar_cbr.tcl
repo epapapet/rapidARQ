@@ -34,11 +34,11 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk timeoutt limit vgseed acker
     set nacker_ [new CaterpillarNacker]
 
     #Tx set up
-	$tARQ_ setup-wnd $wndsize $ratekk
     $tARQ_ set retry_limit_ $limit
     $tARQ_ set lnk_bw_ [$self bw]
     $tARQ_ set lnk_delay_ [$self delay]
     $tARQ_ set app_pkt_Size_ $apktsz
+    $tARQ_ setup-wnd $wndsize $ratekk $timeoutt
     
 
     #Acker set up
