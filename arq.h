@@ -178,7 +178,7 @@ public:
 	Packet* create_coded_ack();
 	void parse_coded_packet(Packet *p, Handler *h);
 	void parse_coded_ack(Packet *p);
-	void decode(Handler* h, bool afterCoded);
+	bool decode(Handler* h, bool afterCoded);
 
 };
 

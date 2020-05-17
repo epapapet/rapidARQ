@@ -605,6 +605,12 @@ void TetrysAcker::recv(Packet* p, Handler* h)
 		clean_decoding_matrix(oldest_sq_sender, new_oldest_sq_sender); //remove from the coding structures the frames that are now out of TetrysTx's active window
 	}
 
+  if (should_check_for_decoding){ //check if decoding is now possible due to the reception of the new pkt (if it is a retransmitted one)
+		involved_known_packets.insert(seq_num); //add newly received pkt
+    known_packets.insert(seq_num); //add newly received pkt
+		decode(h, false); //Check if decoding is now possible
+	}
+
 	//-----Schedule event for starting periodic ACKs----------------//
   if (!first_cum_ack_scheduled){
     first_cum_ack_scheduled = true;
@@ -621,12 +627,6 @@ void TetrysAcker::recv(Packet* p, Handler* h)
   		handle(ack_e);
   }
 	//--------------------------------------------------------------//
-
-	if (should_check_for_decoding){ //check if decoding is now possible due to the reception of the new pkt (if it is a retransmitted one)
-		involved_known_packets.insert(seq_num); //add newly received pkt
-    known_packets.insert(seq_num); //add newly received pkt
-		decode(h, false); //Check if decoding is now possible
-	}
 
 } //end of recv
 

@@ -672,6 +672,7 @@ void CaterpillarAcker::recv(Packet* p, Handler* h)
 	int nxt_seq = (last_fwd_sn_ + 1)%sn_cnt; //the next expected seq_num
 
 	bool should_check_for_decoding = true; //bool to indicate whether the new reception should trigger a decoding
+  bool decoding_occured = false; //bool to check if the new arrival created a decoding
 
 	if (within_fww){//frame belongs to the forward window
 
@@ -739,27 +740,29 @@ void CaterpillarAcker::recv(Packet* p, Handler* h)
 		clean_decoding_matrix(oldest_sq_sender, new_oldest_sq_sender); //remove from the coding structures the frames that are now out of CaterpillarTx's active window
 	}
 
-	//----------------Schedule ACK (but cumulative)-------------------//
-	CaterpillarACKEvent *new_ACKEvent = new CaterpillarACKEvent();
-	Event *ack_e;
-	new_ACKEvent->ACK_sn = seq_num;
-	new_ACKEvent->ACK_uid = pkt_uid;
-	new_ACKEvent->coded_ack = create_coded_ack();
-	new_ACKEvent->isCancelled = false;
-	ack_e = (Event *)new_ACKEvent;
-	if (delay_ > 0)
-		Scheduler::instance().schedule(this, ack_e, (delay_ + 8*HDR_CMN(new_ACKEvent->coded_ack)->size_ /arq_tx_->get_linkbw()));
-	else
-		handle(ack_e);
-	//----------------------------------------------------------------//
-
   if (should_check_for_decoding){ //check if decoding is now possible due to the reception of the new pkt (if it is a retransmitted one)
 		involved_known_packets.insert(seq_num); //add newly received pkt
     known_packets.insert(seq_num); //add newly received pkt
 		delete_lost_and_find_associated_coded_in_matrix(seq_num); //delete received pkt from lost and delete coded pkts containing only this lost
     repopulate_seen_packets(); //a change in the decoding matrix has occured so recalculate seen packets
-		decode(h, false); //Check if decoding is now possible
+		decoding_occured = decode(h, false); //Check if decoding is now possible
 	}
+
+  if (!decoding_occured){ //no need to send new ack since the decode process sent one
+    //----------------Schedule ACK (but cumulative)-------------------//
+    CaterpillarACKEvent *new_ACKEvent = new CaterpillarACKEvent();
+    Event *ack_e;
+    new_ACKEvent->ACK_sn = seq_num;
+    new_ACKEvent->ACK_uid = pkt_uid;
+    new_ACKEvent->coded_ack = create_coded_ack();
+    new_ACKEvent->isCancelled = false;
+    ack_e = (Event *)new_ACKEvent;
+    if (delay_ > 0)
+      Scheduler::instance().schedule(this, ack_e, (delay_ + 8*HDR_CMN(new_ACKEvent->coded_ack)->size_ /arq_tx_->get_linkbw()));
+    else
+      handle(ack_e);
+    //----------------------------------------------------------------//
+  }
 
 } //end of recv
 
@@ -929,7 +932,7 @@ void CaterpillarAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function t
 
 } //end of parse_coded_packet
 
-void CaterpillarAcker::decode(Handler* h, bool afterCodedreception){
+bool CaterpillarAcker::decode(Handler* h, bool afterCodedreception){
 
   if (debug) printf("CaterpillarRx, decode : Examining decoding (LPKTS=%d,RCODED=%d).\n", (int)lost_packets.size(), (int)coded_packets.size());
 
@@ -945,7 +948,7 @@ void CaterpillarAcker::decode(Handler* h, bool afterCodedreception){
 			num_of_decodings ++;
       avg_pkts_per_decoding = avg_pkts_per_decoding + lost_packets.size();
 	}
-	if ((!decoding_is_possible) && (!afterCodedreception)) return; //no need to decode and no need to send ack
+	if ((!decoding_is_possible) && (!afterCodedreception)) return false; //no need to decode and no need to send ack
 
 
   if (decoding_is_possible){
@@ -1014,7 +1017,12 @@ void CaterpillarAcker::decode(Handler* h, bool afterCodedreception){
   			clean_decoding_matrix(oldest_sq_sender, new_oldest_sq_sender); //remove from the coding structures the frames that are now outside the backward window (i.e., CaterpillarTx's active window)
   		}
   	} //end for
-  } //end if
+
+    lost_packets.clear(); //clean because frames were decoded
+    seen_packets.clear(); //clean because all frames were decoded
+    coded_packets.clear(); //coded frames no more needed because decoding completed
+
+  } //end if decoding_is_possible
 
 	//Sent a cumulative ack =======================================//
 	Event *ack_e;
@@ -1032,11 +1040,7 @@ void CaterpillarAcker::decode(Handler* h, bool afterCodedreception){
 	if (debug) printf("CaterpillarRx, decode: ACK sent.\n");
 	//=============================================================//
 
-  if (decoding_is_possible){
-    lost_packets.clear(); //clean because frames were decoded
-    seen_packets.clear(); //clean because all frames were decoded
-    coded_packets.clear(); //coded frames no more needed because decoding completed
-  }
+  return decoding_is_possible;
 
 } //end of decode
 
