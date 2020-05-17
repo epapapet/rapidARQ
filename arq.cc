@@ -422,9 +422,17 @@ bool ARQTx::nack_incr(int rcv_sn)
 			if (debug) printf("ARQTx, nack: Sending pkt %d. SimTime=%.8f.\n", rcv_sn, Scheduler::instance().clock());
 			blocked_ = 1;
 			num_rtxs[rcv_sn%wnd_]++;
-			status[rcv_sn%wnd_] = SENT;
-			Packet *newp = pkt_buf[rcv_sn%wnd_]->copy();
       pkt_rtxs++;
+			status[rcv_sn%wnd_] = SENT;
+      vector<int>::iterator it = std::find(most_recent_sent.begin(), most_recent_sent.end(), rcv_sn);
+      if(it == most_recent_sent.end()){
+        if((int) most_recent_sent.size() == coding_wnd) most_recent_sent.erase(most_recent_sent.begin());
+        most_recent_sent.push_back(rcv_sn);
+      } else {
+        most_recent_sent.erase(it);
+        most_recent_sent.push_back(rcv_sn);
+      }
+			Packet *newp = pkt_buf[rcv_sn%wnd_]->copy();
       native_counter++;
       if (native_counter == rate_k){ //prepare a coded frame
         coded = create_coded_packet();
@@ -463,7 +471,6 @@ void ARQTx::resume()
 		num_pending_retrans_--;
 		blocked_ = 1;
     pkt_rtxs++;
-    status[runner_] = SENT;
     vector<int>::iterator it = std::find(most_recent_sent.begin(), most_recent_sent.end(), HDR_CMN(pkt_buf[runner_])->opt_num_forwards_);
     if(it == most_recent_sent.end()){
       if((int) most_recent_sent.size() == coding_wnd) most_recent_sent.erase(most_recent_sent.begin());
@@ -478,6 +485,7 @@ void ARQTx::resume()
     } else {
       pnew = (pkt_buf[runner_])->copy(); //RTXPRE: send packet normally
     }
+    status[runner_] = SENT;
     native_counter++;
 		if (native_counter == rate_k){ //prepare a coded frame
 			coded = create_coded_packet();
