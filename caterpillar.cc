@@ -341,8 +341,8 @@ void CaterpillarTx::nack(int rcv_sn, int rcv_uid)
 			blocked_ = 1;
 			num_rtxs[rcv_sn%wnd_]++;
 			status[rcv_sn%wnd_] = SENT;
-      Packet *newp = create_coded_packet(); //instead of retransmitting the packet, transmit a coded packet
       pkt_rtxs++;
+      Packet *newp = create_coded_packet(); //instead of retransmitting the packet, transmit a coded packet
       native_counter++;
       if (native_counter == rate_k){ //prepare a coded frame
         coded = create_coded_packet();
@@ -438,6 +438,7 @@ void CaterpillarTx::resume()
 		num_pending_retrans_--;
 		blocked_ = 1;
     pkt_rtxs++;
+    status[runner_] = SENT;
     Packet *pnew;
 		if (status[runner_] == RTX){
       pnew = create_coded_packet(); //RTX: timeout has expired, send a coded pkt
@@ -450,7 +451,6 @@ void CaterpillarTx::resume()
       native_counter = 0;
     }
     sent_time[HDR_CMN(pkt_buf[runner_])->opt_num_forwards_] = Scheduler::instance().clock();
-    status[runner_] = SENT;
 		send(pnew,&arqh_);
 	} else {//there are no pending retransmision, check whether it is possible to send a new packet
 		//TO DO: check whether active window reaches wnd_ and CaterpillarTx is stuck without asking queue for the next frame

@@ -361,9 +361,7 @@ void ARQTx::nack(int rcv_sn, int rcv_uid)
 			blocked_ = 1;
 			num_rtxs[rcv_sn%wnd_]++;
 			status[rcv_sn%wnd_] = SENT;
-			Packet *newp = create_coded_packet(); //instead of retransmitting the packet, transmit a coded packet
       pkt_rtxs++;
-      native_counter++;
       vector<int>::iterator it = std::find(most_recent_sent.begin(), most_recent_sent.end(), rcv_sn);
       if(it == most_recent_sent.end()){
         if((int) most_recent_sent.size() == coding_wnd) most_recent_sent.erase(most_recent_sent.begin());
@@ -372,6 +370,8 @@ void ARQTx::nack(int rcv_sn, int rcv_uid)
         most_recent_sent.erase(it);
         most_recent_sent.push_back(rcv_sn);
       }
+      Packet *newp = create_coded_packet(); //instead of retransmitting the packet, transmit a coded packet
+      native_counter++;
       if (native_counter == rate_k){ //prepare a coded frame
         coded = create_coded_packet();
         native_counter = 0;
@@ -463,13 +463,7 @@ void ARQTx::resume()
 		num_pending_retrans_--;
 		blocked_ = 1;
     pkt_rtxs++;
-    Packet *pnew;
-		if (status[runner_] == RTX){
-      pnew = create_coded_packet(); //RTX: timeout has expired, send a coded pkt
-    } else {
-      pnew = (pkt_buf[runner_])->copy(); //RTXPRE: send packet normally
-    }
-    native_counter++;
+    status[runner_] = SENT;
     vector<int>::iterator it = std::find(most_recent_sent.begin(), most_recent_sent.end(), HDR_CMN(pkt_buf[runner_])->opt_num_forwards_);
     if(it == most_recent_sent.end()){
       if((int) most_recent_sent.size() == coding_wnd) most_recent_sent.erase(most_recent_sent.begin());
@@ -478,12 +472,18 @@ void ARQTx::resume()
       most_recent_sent.erase(it);
       most_recent_sent.push_back(HDR_CMN(pkt_buf[runner_])->opt_num_forwards_);
     }
+    Packet *pnew;
+		if (status[runner_] == RTX){
+      pnew = create_coded_packet(); //RTX: timeout has expired, send a coded pkt
+    } else {
+      pnew = (pkt_buf[runner_])->copy(); //RTXPRE: send packet normally
+    }
+    native_counter++;
 		if (native_counter == rate_k){ //prepare a coded frame
 			coded = create_coded_packet();
 			native_counter = 0;
 		}
     sent_time[HDR_CMN(pkt_buf[runner_])->opt_num_forwards_] = Scheduler::instance().clock();
-    status[runner_] = SENT;
 		send(pnew,&arqh_);
 	} else {//there are no pending retransmision, check whether it is possible to send a new packet
 		//TO DO: check whether active window reaches wnd_ and ARQTx is stuck without asking queue for the next frame
