@@ -438,13 +438,13 @@ void CaterpillarTx::resume()
 		num_pending_retrans_--;
 		blocked_ = 1;
     pkt_rtxs++;
-    status[runner_] = SENT;
     Packet *pnew;
 		if (status[runner_] == RTX){
       pnew = create_coded_packet(); //RTX: timeout has expired, send a coded pkt
     } else {
       pnew = (pkt_buf[runner_])->copy(); //RTXPRE: send packet normally
     }
+    status[runner_] = SENT;    
     native_counter++;
     if (native_counter == rate_k){ //prepare a coded frame
       coded = create_coded_packet();
