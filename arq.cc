@@ -58,6 +58,7 @@ ARQTx::ARQTx() : arqh_(*this)
 	bind("lnk_delay_", &lnk_delay_);
 	app_pkt_Size_ = 8000;
 	bind("app_pkt_Size_", &app_pkt_Size_);
+  timeout_ = 0; //the period of time waiting for receiving an ack
 	native_counter = 0; //counter used for invoking the creation of a coded frame
 
 	debug = false; //used to enable printing of diagnostic messages
@@ -73,7 +74,7 @@ ARQTx::ARQTx() : arqh_(*this)
 int ARQTx::command(int argc, const char*const* argv)
 {
 	Tcl& tcl = Tcl::instance();
-  if (argc == 5) {
+  if (argc == 6) {
 		if (strcmp(argv[1], "setup-wnd") == 0) {
 			if (*argv[2] == '0') {
 				tcl.resultf("Cannot setup NULL wnd\n");
@@ -85,7 +86,9 @@ int ARQTx::command(int argc, const char*const* argv)
 			status = new ARQStatus[wnd_]; //the status for each frame: IDLE,SENT,ACKED,RTX,DROP
 			num_rtxs = new int[wnd_]; //the number of retransmissions executed for each frame
 			pkt_uids = new int[wnd_]; //buffer for storing the uids of pending frames: used only for diagnostic purposes
-			for(int i=0; i<wnd_; i++){ pkt_buf[i] = NULL; status[i] = IDLE; num_rtxs[i] = 0; pkt_uids[i]=-1; }
+      sent_time = new double[sn_cnt]; //used for avoiding a storm of retransmissions due to negative acks
+      for(int i=0; i<wnd_; i++){ pkt_buf[i] = NULL; status[i] = IDLE; num_rtxs[i] = 0; pkt_uids[i]=-1; }
+      for(int i=0; i<sn_cnt; i++){ sent_time[i] = 0.0; }
       rate_k = atoi(argv[3]);
       coding_depth = atoi(argv[4]);
       if (rate_k == 0){
@@ -96,6 +99,12 @@ int ARQTx::command(int argc, const char*const* argv)
         tcl.resultf("The product coding_depth*rate_k should not exceed wnd\n");
 				return(TCL_ERROR);
       }
+      timeout_ = atof(argv[5]);
+      double max_ack_size = (wnd_ + 1)*4.0;
+      double rtt_time = 2*lnk_delay_ + 8.0*(app_pkt_Size_ + max_ack_size)/lnk_bw_;
+      if (timeout_ > 0) timeout_ = timeout_ - lnk_delay_ - 8.0*app_pkt_Size_/lnk_bw_; //needed to have a timeout equla to argv[3]
+      if (timeout_ == 0){ timeout_ = rtt_time - lnk_delay_ - 8.0*app_pkt_Size_/lnk_bw_; } //the total timeout is rtt_time
+      if (timeout_ < 0) { timeout_ = -(1.0/timeout_)*rtt_time - lnk_delay_ - 8.0*app_pkt_Size_/lnk_bw_; } //the total timeout is rtt_time/timeout_
 			return(TCL_OK);
 		}
 	} return Connector::command(argc, argv);
@@ -148,6 +157,7 @@ void ARQTx::recv(Packet* p, Handler* h)
 		num_rtxs[most_recent_sq_%wnd_] = 0;
 
     ch->ts_arr_ = Scheduler::instance().clock(); //used to calculate delay, retransmitted pkts are not sent through recv(), so this is a new pkt
+    sent_time[ch-> opt_num_forwards_] = Scheduler::instance().clock();
 
 		most_recent_sq_ = (most_recent_sq_+1)%sn_cnt;
 
@@ -239,7 +249,7 @@ void ARQTx::ack(int rcv_sn, int rcv_uid)
 	if (status[rcv_sn%wnd_] != ACKED){
 		if (debug) printf("ARQTx ack: Pkt %d with status %d is ACKED. The news status is %d. Pending retrans=%d. LA(MR) before is %d(%d). SimTime=%.8f.\n ", rcv_sn, status[rcv_sn%wnd_], ACKED, num_pending_retrans_, last_acked_sq_, most_recent_sq_, Scheduler::instance().clock());
 
-		if(status[rcv_sn%wnd_] == RTX) num_pending_retrans_--; //reduce the number of scheduled retransmissions
+		if ((status[rcv_sn%wnd_] == RTX) || (status[rcv_sn%wnd_] == RTXPRE)) num_pending_retrans_--; //reduce the number of scheduled retransmissions
 		status[rcv_sn%wnd_] = ACKED;
 		if (rcv_sn%wnd_ == ((last_acked_sq_ + 1)%sn_cnt)%wnd_){
       reset_lastacked();  //acked frame is next in order, so check whether the active window should advance
@@ -281,7 +291,11 @@ void ARQTx::ack(Packet *p){ //called when a coded ack arrives, reads the content
 		seq_number = seq_number << 8 | *(contents+sizeof(int)*j+2);
 		seq_number = seq_number << 8 | *(contents+sizeof(int)*j+3);
 
-    valid_seqnum = ack_incr(seq_number);
+    if (seq_number >= 0){
+      valid_seqnum = ack_incr(seq_number);
+    } else {
+      valid_seqnum = nack_incr(seq_number+10000); //this is a negative ACK
+    }
     if (!valid_seqnum) continue;
     if (seq_number%wnd_ == ((last_acked_sq_ + 1)%sn_cnt)%wnd_) should_forward_window = true;
 	}
@@ -308,7 +322,7 @@ bool ARQTx::ack_incr(int rcv_sn)
 
 	if (status[rcv_sn%wnd_] != ACKED){
 		if (debug) printf("ARQTx ack: Pkt %d with status %d is ACKED. The news status is %d. Pending retrans=%d. LA(MR) before is %d(%d). SimTime=%.8f.\n ", rcv_sn, status[rcv_sn%wnd_], ACKED, num_pending_retrans_, last_acked_sq_, most_recent_sq_, Scheduler::instance().clock());
-		if(status[rcv_sn%wnd_] == RTX) num_pending_retrans_--; //reduce the number of scheduled retransmissions
+		if ((status[rcv_sn%wnd_] == RTX) || (status[rcv_sn%wnd_] == RTXPRE)) num_pending_retrans_--; //reduce the number of scheduled retransmissions
 		status[rcv_sn%wnd_] = ACKED;
 	}
   return true;
@@ -317,7 +331,7 @@ bool ARQTx::ack_incr(int rcv_sn)
 
 void ARQTx::nack(int rcv_sn, int rcv_uid)
 {
-
+  //this is a nack inferred by the timeout expiration
 	int fw_dis = (rcv_sn - last_acked_sq_ + sn_cnt)%sn_cnt;
 	int fw_width = (most_recent_sq_ - last_acked_sq_ + sn_cnt)%sn_cnt;
 	bool within_fww = ((fw_dis < fw_width) && (fw_dis > 0)) ? (true) : (false);
@@ -344,7 +358,7 @@ void ARQTx::nack(int rcv_sn, int rcv_uid)
 			blocked_ = 1;
 			num_rtxs[rcv_sn%wnd_]++;
 			status[rcv_sn%wnd_] = SENT;
-			Packet *newp = pkt_buf[rcv_sn%wnd_]->copy();
+			Packet *newp = create_coded_packet(); //instead of retransmitting the packet, transmit a coded packet
       pkt_rtxs++;
       native_counter++;
       vector<int>::iterator it = std::find(most_recent_sent.begin(), most_recent_sent.end(), rcv_sn);
@@ -356,6 +370,7 @@ void ARQTx::nack(int rcv_sn, int rcv_uid)
         coded = create_coded_packet();
         native_counter = 0;
       }
+      sent_time[rcv_sn] = Scheduler::instance().clock();
 			send(newp,&arqh_);
 		} else {
 			num_pending_retrans_++;
@@ -370,6 +385,58 @@ void ARQTx::nack(int rcv_sn, int rcv_uid)
 	}
 
 }//end of nack
+
+bool ARQTx::nack_incr(int rcv_sn)
+{
+  //this is a direct NACK
+	int fw_dis = (rcv_sn - last_acked_sq_ + sn_cnt)%sn_cnt;
+	int fw_width = (most_recent_sq_ - last_acked_sq_ + sn_cnt)%sn_cnt;
+	bool within_fww = ((fw_dis < fw_width) && (fw_dis > 0)) ? (true) : (false);
+	if (!within_fww) return false; //ARQTx may receive multiple NACKs per frame due to coded frames, so ignore ACKs out of the active window
+
+  if (Scheduler::instance().clock() - sent_time[rcv_sn] < timeout_) return false; //no need to retransmit if sufficient time has not elapsed (avoid rtx storm)
+
+	//Sanity checks--------//
+	if (status[rcv_sn%wnd_] == IDLE) { fprintf(stderr,"Error at ARQTx::nack, a NACK is received when the status is not SENT.\n"); abort(); }
+	if (handler_ == 0) { fprintf(stderr,"Error at ARQTx::nack, handler_ is null\n"); abort(); }
+	if (&arqh_==0) { fprintf(stderr, "Error at ARQTx::nack, Cannot transmit when &arqh_ is Null.\n"); abort(); }
+	//--------------------//
+
+	if (status[rcv_sn%wnd_] != SENT) { //it is possible to receive an NACK for a frame acked through a cumulative ACK (i.e., coded frame) when the cumulative ACK arives after the retransmission
+		if (debug) printf("ARQTx, nack: NACK for pkt %d with status %d. Ignoring. SimTime=%.8f.\n", rcv_sn, status[rcv_sn%wnd_], Scheduler::instance().clock());
+		return false;
+	} else {
+		if (pkt_buf[rcv_sn%wnd_] == NULL) { fprintf(stderr,"Error at ARQTx::nack, a NACK is received but pkt is not found.\n"); abort(); }
+		if (debug) printf("ARQTx, nack: NACK for pkt %d with status %d. SimTime=%.8f.\n", rcv_sn, status[rcv_sn%wnd_], Scheduler::instance().clock());
+	}
+
+	if ( num_rtxs[rcv_sn%wnd_] < retry_limit_) { //packet shoud be retransmitted
+		status[rcv_sn%wnd_] = RTXPRE; //a premature retransmission due to a negative ack
+		if (!blocked_){ //if ARQTx is available go on with retransmision
+			if (debug) printf("ARQTx, nack: Sending pkt %d. SimTime=%.8f.\n", rcv_sn, Scheduler::instance().clock());
+			blocked_ = 1;
+			num_rtxs[rcv_sn%wnd_]++;
+			status[rcv_sn%wnd_] = SENT;
+			Packet *newp = pkt_buf[rcv_sn%wnd_]->copy();
+      pkt_rtxs++;
+      native_counter++;
+      if (native_counter == rate_k){ //prepare a coded frame
+        coded = create_coded_packet();
+        native_counter = 0;
+      }
+      sent_time[rcv_sn] = Scheduler::instance().clock();
+			send(newp,&arqh_);
+		} else {
+			num_pending_retrans_++;
+		}
+    return false;
+	} else {//packet should be dropped
+		if (debug) printf("ARQTx, nack: Dropping pkt %d. SimTime=%.8f.\n", rcv_sn, Scheduler::instance().clock());
+		status[rcv_sn%wnd_] = DROP;
+    return true;
+	}
+
+}//end of nack_incr
 
 void ARQTx::resume()
 {
@@ -387,11 +454,15 @@ void ARQTx::resume()
 		int runner_ = findpos_retrans();
 		if (debug) printf("ARQTx, resume: Sending pkt %d. SimTime=%.8f.\n", (HDR_CMN(pkt_buf[runner_]))->opt_num_forwards_, Scheduler::instance().clock());
 		num_rtxs[runner_]++;
-		status[runner_] = SENT;
 		num_pending_retrans_--;
 		blocked_ = 1;
-		Packet *pnew = (pkt_buf[runner_])->copy();
     pkt_rtxs++;
+    Packet *pnew;
+		if (status[runner_] == RTX){
+      pnew = create_coded_packet(); //RTX: timeout has expired, send a coded pkt
+    } else {
+      pnew = (pkt_buf[runner_])->copy(); //RTXPRE: send packet normally
+    }
     native_counter++;
     vector<int>::iterator it = std::find(most_recent_sent.begin(), most_recent_sent.end(), HDR_CMN(pkt_buf[runner_])->opt_num_forwards_);
     if(it == most_recent_sent.end()){
@@ -402,6 +473,8 @@ void ARQTx::resume()
 			coded = create_coded_packet();
 			native_counter = 0;
 		}
+    sent_time[HDR_CMN(pkt_buf[runner_])->opt_num_forwards_] = Scheduler::instance().clock();
+    status[runner_] = SENT;
 		send(pnew,&arqh_);
 	} else {//there are no pending retransmision, check whether it is possible to send a new packet
 		//TO DO: check whether active window reaches wnd_ and ARQTx is stuck without asking queue for the next frame
@@ -425,7 +498,7 @@ int ARQTx::findpos_retrans()
 	int runner_ = ((last_acked_sq_+1)%sn_cnt)%wnd_;
 
 	do {
-		if (status[runner_] == RTX) {
+		if ((status[runner_] == RTX) || (status[runner_] == RTXPRE)) {
 			found = TRUE;
 			break;
 		}
@@ -446,7 +519,7 @@ void ARQTx::reset_lastacked()
 
 	int runner_ = ((last_acked_sq_+1)%sn_cnt)%wnd_;
 	do {
-		if ((status[runner_] == RTX) || (status[runner_] == SENT)) break;
+		if ((status[runner_] == RTX) || (status[runner_] == RTXPRE) || (status[runner_] == SENT)) break;
 		if (pkt_buf[runner_]) Packet::free(pkt_buf[runner_]); //free frames not needed any more
 		pkt_buf[runner_] = NULL;
 		status[runner_] = IDLE;
@@ -502,12 +575,11 @@ int ARQRx::command(int argc, const char*const* argv)
       delay_ = arq_tx_->get_linkdelay(); //the propagation delay
       timeout_ = atof(argv[2]);
       double max_ack_size = (arq_tx_->get_wnd() + 1)*4.0;
-      double minimum_rtt_time = 2*delay_ + 8.0*(arq_tx_->get_apppktsize() + 1)/arq_tx_->get_linkbw();
       double rtt_time = 2*delay_ + 8.0*(arq_tx_->get_apppktsize() + max_ack_size)/arq_tx_->get_linkbw();
       if (timeout_ > 0) timeout_ = timeout_ - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); //needed to have a timeout equal to argv[2]
       if (timeout_ == 0){ timeout_ = rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); } //the total timeout is rtt_time
       if (timeout_ < 0) { timeout_ = -(1.0/timeout_)*rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw(); } //the total timeout is rtt_time/timeout_
-      if (timeout_ < minimum_rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw()) {
+      if (timeout_ < rtt_time - delay_ - 8.0*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw()) {
         tcl.resultf("Timeout is too small.\n");
 				return(TCL_ERROR);
       }
@@ -696,25 +768,26 @@ void ARQAcker::recv(Packet* p, Handler* h)
     clean_known_packets(oldest_sq, new_oldest_sq); //remove frames that are out of ARQTx's active wnd
 	}
 
-	//-----Schedule ACK----------------//
+	//----------------Schedule ACK (but cumulative)-------------------//
 	ACKEvent *new_ACKEvent = new ACKEvent();
 	Event *ack_e;
 	new_ACKEvent->ACK_sn = seq_num;
 	new_ACKEvent->ACK_uid = pkt_uid;
-	new_ACKEvent->coded_ack = NULL;
+	new_ACKEvent->coded_ack = create_coded_ack();
 	new_ACKEvent->isCancelled = false;
 	ack_e = (Event *)new_ACKEvent;
 	if (delay_ > 0)
-		Scheduler::instance().schedule(this, ack_e, (delay_ + 8.0/arq_tx_->get_linkbw()));
+		Scheduler::instance().schedule(this, ack_e, (delay_ + 8*HDR_CMN(new_ACKEvent->coded_ack)->size_ /arq_tx_->get_linkbw()));
 	else
 		handle(ack_e);
-	//---------------------------------//
+	//---------------------------------------------------------------//
 
 	if (should_check_for_decoding){ //check if decoding is now possible due to the reception of the new pkt (if it is a retransmitted one)
     involved_known_packets.insert(seq_num);
     known_packets.insert(seq_num); //add newly received pkt
 		delete_lost_and_find_associated_coded_in_matrix(seq_num); //delete received pkt from lost and delete coded pkts containing only this lost
-		decode(h, false); //Check if decoding is now possible
+    repopulate_seen_packets(); //a change in the decoding matrix has occured so recalculate seen packets
+    decode(h, false); //Check if decoding is now possible
 	}
 
 } //end of recv
@@ -794,6 +867,7 @@ void ARQAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that read
   lost_packets.clear();
   set<int> coded_pkt_contents; //used to store the contents of the coded pkt for short term
   vector<int> coded_pkt_contents_vector; //used store the contents of the coded pkt for long term
+  bool found_first_lost = false;
 
 	if (debug) {
 		int start_pos = (last_fwd_sn_+1)%sn_cnt;
@@ -846,6 +920,10 @@ void ARQAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function that read
 		if(known_packets.find(readint) == known_packets.end()){ //is not included in already known
 			if (debug) printf("+");
 			lost_packets.insert(readint);
+      if ((!found_first_lost) && (seen_packets.count(readint) == 0)){ //find the first lost (but not seen pkt) contained in the coded
+        found_first_lost = true;
+        if (old_lost_packets.count(readint) == 0) seen_packets.insert(readint); //if the pkt is a new lost (not already in lost) then it is a "seen" one
+      }
 		}
     //if packet is included in known_packets but not in involved_known_packets, insert it to the latter
     if(known_packets.find(readint) != known_packets.end() && involved_known_packets.find(readint) == involved_known_packets.end()) involved_known_packets.insert(readint);
@@ -995,6 +1073,7 @@ void ARQAcker::decode(Handler* h, bool afterCodedreception){
 
   if (decoding_is_possible){
     lost_packets.clear(); //clean because frames were decoded
+    seen_packets.clear(); //clean because all frames were decoded
     coded_packets.clear(); //coded frames no more needed because decoding completed
   }
 
@@ -1005,9 +1084,10 @@ Packet* ARQAcker::create_coded_ack(){
 	Packet *cpkt = Packet::alloc();
 	hdr_cmn *ch2 = HDR_CMN(cpkt);
 	ch2->opt_num_forwards_ = -10001; //coded packet ACK
-	unsigned char *buffer = new unsigned char[sizeof(int)*((int)(known_packets.size()) + 1)]; //4 bytes for each decoded frame plus a byte for the counter
+	unsigned char *buffer = new unsigned char[sizeof(int)*((int)(known_packets.size()) + (int)(lost_packets.size()) + 1)]; //4 bytes for each decoded frame plus a byte for the counter
 
 	int cnt_pkts = 0;
+  int negative_seq_num;
 	set <int> :: iterator itr;
 	for (itr = known_packets.begin(); itr != known_packets.end(); itr++)
 	{
@@ -1015,6 +1095,17 @@ Packet* ARQAcker::create_coded_ack(){
 		*(buffer+sizeof(int)*(cnt_pkts+1)+1) = (*itr >> 16) & 0xFF;
 		*(buffer+sizeof(int)*(cnt_pkts+1)+2) = (*itr >> 8) & 0xFF;
 		*(buffer+sizeof(int)*(cnt_pkts+1)+3) = *itr & 0xFF;
+		cnt_pkts++;
+	}
+  for (itr = lost_packets.begin(); itr != lost_packets.end(); itr++)
+	{
+    //cum ACK contains negative ACKs, identified as seq_num - 10000
+    negative_seq_num = (*itr - 10000);
+    if (seen_packets.count(*itr) != 0) negative_seq_num = *itr; //seen packets are positively acknowledged
+		*(buffer+sizeof(int)*(cnt_pkts+1)) =  (negative_seq_num >> 24) & 0xFF;
+		*(buffer+sizeof(int)*(cnt_pkts+1)+1) = (negative_seq_num >> 16) & 0xFF;
+		*(buffer+sizeof(int)*(cnt_pkts+1)+2) = (negative_seq_num >> 8) & 0xFF;
+		*(buffer+sizeof(int)*(cnt_pkts+1)+3) = negative_seq_num & 0xFF;
 		cnt_pkts++;
 	}
 	*(buffer) =  (cnt_pkts >> 24) & 0xFF;
@@ -1042,7 +1133,8 @@ void ARQAcker::clean_decoding_matrix(int from, int to)
 	do {
 		delete_known_from_matrix_strict(runner_); //delete known pkt only if it is not contained in any stored coded one
     delete_lost_and_associated_coded_from_matrix(runner_); //delete lost pkt and also all coded containing this packet
-		runner_ = (runner_ + 1)%sn_cnt;
+    repopulate_seen_packets(); //a change in decoding matrix has occured, so recalculate seen packets
+    runner_ = (runner_ + 1)%sn_cnt;
 	} while (runner_ != to);
 } //end of clean_decoding_matrix
 
@@ -1194,6 +1286,31 @@ void ARQAcker::delete_known_from_matrix_strict(int pkt_to_remove){
 
 } //end of delete_known_from_matrix
 
+void ARQAcker::repopulate_seen_packets(){
+
+  set<int> repopulatelost;
+  vector<vector<int> >::iterator itcodedpkts;
+  vector<int>::iterator codedcontentsit;
+  bool found_first_lost = false;
+
+  seen_packets.clear();
+  for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){ //for each coded pkt (each row in decoding matrix) - order of coded pkts is important
+    for (codedcontentsit = (*itcodedpkts).begin(); codedcontentsit != (*itcodedpkts).end(); ++codedcontentsit){ //for each pkt contained in the coded one - order of contents is important
+      if (involved_known_packets.count(*(codedcontentsit)) == 0){ //if native is not known
+        if ((!found_first_lost) && (seen_packets.count(*(codedcontentsit)) == 0)){ //find the first lost pkt that is not seen
+          found_first_lost = true;
+          if (repopulatelost.count(*(codedcontentsit)) == 0) seen_packets.insert(*(codedcontentsit)); //if the first pkt is a new lost (not already in list of lost)
+        }
+        repopulatelost.insert(*(codedcontentsit)); //add found lost pkt in list of lost
+      }
+    }
+    found_first_lost = false;
+  }
+  repopulatelost.clear();
+
+
+} //end of populate_seen_packets
+
 void ARQAcker::delete_nack_event(int seq_num){
 	event_buf[seq_num] = NULL;
 } //end of delete_nack_event
@@ -1217,9 +1334,19 @@ void ARQAcker::log_lost_pkt(Packet *p, ACKEvent *e){
 	} else {
 		lost_pkt_buf[seq_num] = p;
 	}
-	if (event_buf[seq_num] != NULL) { fprintf(stderr, "Error at ARQRx::log_lost_pkt, event_buf position found non empty.\n"); abort(); }
+	//if (event_buf[seq_num] != NULL) { fprintf(stderr, "Error at ARQRx::log_lost_pkt, event_buf position found non empty.\n"); abort(); }
 	//Should never find this position with a NACK event since if this is a RTX the NACK event should have been deleted
-	event_buf[seq_num] = e;
+  //If real negative acks are used then it is possible to find a position non-empty: e.g., the retransmission is lost similar to the original
+  //transmission but the timeout has not expired to delete the event built for the original transmission. We can replace the old event since it is
+  //already cancelled
+  if (event_buf[seq_num] != NULL) {
+    ACKEvent *stored_event = (ACKEvent *)event_buf[seq_num];
+    if (stored_event->isCancelled == false) {
+      fprintf(stderr, "Error at ARQRx::log_lost_pkt, event_buf position found non empty and event is not cancelled.\n");
+      abort();
+    }
+  }
+  event_buf[seq_num] = e;
 
 } // end of log_lost_pkt
 
@@ -1253,6 +1380,7 @@ void ARQAcker::parse_coded_ack(Packet *p){
 		seq_number = seq_number << 8 | *(contents+sizeof(int)*j+2);
 		seq_number = seq_number << 8 | *(contents+sizeof(int)*j+3);
 
+    if (seq_number < 0) continue; //this is a negative ack within the cumACK, no need to cancel an event because it wiLl be cancelled by a positive ACK
 		if(event_buf[seq_number]) {
 			event_buf[seq_number]->isCancelled = true;
 			if (debug) printf("ARQAcker, parse_coded_ack: NACK for pkt %d is cancelled.\n", seq_number);
@@ -1270,7 +1398,7 @@ void ARQAcker::handle(Event* e)
 	delete e;
 
 	if ( ranvar_->value() < err_rate ){
-		if (rcv_p == NULL){ //a coded ack is not expected so no need to call arq_tx->nack() at the appropriate time
+		if (rcv_sn != -1){ //this is a cumACK but not one created due to decode
 			if (debug) printf("Acker, handle: ACK for pkt %d is lost.\n", rcv_sn);
 			if (timeout_ - (delay_ + 8.0/arq_tx_->get_linkbw())==  0) { //if timeout is the same as the time needed for ACK to be delivered then just call nack() instead of ack()
 				arq_tx_->nack(rcv_sn, rcv_uid);
@@ -1284,12 +1412,13 @@ void ARQAcker::handle(Event* e)
 				ack_e_helper = (Event *)ACKEvent_helper;
 				Scheduler::instance().schedule(nacker, ack_e_helper, timeout_ - (delay_ + 8.0/arq_tx_->get_linkbw()));
 			}
-		} else { //the coded ack is lost, so free
-			if (debug) printf("Acker, handle: Coded ACK is lost.\n");
+      if (rcv_p) Packet::free(rcv_p); //delete the coded ack pkt
+		} else { //this is the cumACK produced due to a decode which is not expected, so free the packet
+		  if (debug) printf("Acker, handle: Coded (i.e., cumACK from decode) ACK is lost.\n");
 			Packet::free(rcv_p);
 		}
 	} else {
-		if(rcv_p){ //different call based on the type of received packet
+		if(rcv_p){ //if it is a cumACK
 			parse_coded_ack(rcv_p);
 			arq_tx_->ack(rcv_p);
 		}else{

@@ -35,11 +35,11 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth timeoutt limit vgse
     set nacker_ [new ARQNacker]
 
     #Tx set up
-	$tARQ_ setup-wnd $wndsize $ratekk $coddpth
     $tARQ_ set retry_limit_ $limit
     $tARQ_ set lnk_bw_ [$self bw]
     $tARQ_ set lnk_delay_ [$self delay]
     $tARQ_ set app_pkt_Size_ [expr {$apktsz + 40}]
+	$tARQ_ setup-wnd $wndsize $ratekk $coddpth $timeoutt
     
 
     #Acker set up
