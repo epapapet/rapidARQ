@@ -558,7 +558,7 @@ void CaterpillarTx::reset_lastacked()
 	int runner_ = ((last_acked_sq_+1)%sn_cnt)%wnd_;
   int wide_runner_ = (last_acked_sq_+1)%sn_cnt;
 	do {
-		if ((status[runner_] == RTX) || (status[runner_] == SENT)) break;
+		if ((status[runner_] == RTX) || (status[runner_] == RTXPRE) || (status[runner_] == SENT)) break;
 		if (pkt_buf[runner_]) Packet::free(pkt_buf[runner_]); //free frames not needed any more
 		pkt_buf[runner_] = NULL;
     timeout_events[wide_runner_] = NULL;
