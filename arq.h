@@ -5,53 +5,61 @@
 #include <map>
 #include <algorithm>
 
-class ARQTx;
-enum ARQStatus {IDLE,SENT,ACKED,RTX,RTXPRE,DROP}; //statuses for packets sent by ARQTx
-enum PacketStatus {NONE,MISSING,RECEIVED,DECODED}; //for ARQAcker, in order to tell apart different types of packets
+class CARQTx;
+enum CARQStatus {IDLE,SENT,ACKED,RTX,RTXPRE,DROP}; //statuses for packets sent by CARQTx
+enum CARQPacketStatus {NONE,MISSING,RECEIVED,DECODED}; //for CARQAcker, in order to tell apart different types of packets
+enum CARQEventTypes {TIMEOUT,ACK}; //types of events
 
-class ARQHandler : public Handler {
+class CARQHandler : public Handler {
 public:
-    ARQHandler(ARQTx& arq) : arq_tx_(arq) {};
+    CARQHandler(CARQTx& arq) : arq_tx_(arq) {};
     void handle(Event*);
 private:
-    ARQTx& arq_tx_;
+    CARQTx& arq_tx_;
 };
 
-class ACKEvent : public Event {
+class CARQEvent : public Event {
  public:
-	int ACK_sn;
-	int ACK_uid;
-	Packet* coded_ack;
-	bool isCancelled;
+   CARQEventTypes type;
+   int sn;
+   int uid;
 };
 
-class ARQTx : public Connector {
+class CARQACKEvent : public CARQEvent {
  public:
-	ARQTx();
+   Packet* coded_ack;
+};
+
+class CARQTimeoutEvent : public CARQEvent {
+ public:
+   double expirationTime;
+   bool isCancelled;
+};
+
+class CARQTx : public Connector {
+ public:
+	CARQTx();
 	void recv(Packet*, Handler*);
-	void nack(int rcv_sn, int rcv_uid);
-  bool nack_incr(int rcv_sn);
-	void ack(int rcv_sn, int rcv_uid);
-	void ack(Packet *p); //overloaded ack method
-  bool ack_incr(int rcv_sn);
+	void timeout_expired(int rcv_sn, int rcv_uid);
+	//void ack(int rcv_sn, int rcv_uid);
+	void parse_cumulative_ack(Packet *p); //overloaded ack method
+  bool parse_ack(int rcv_sn, bool batch);
+  bool parse_nack(int rcv_sn);
 	void resume();
+	virtual void handle(Event* e);
 	int command(int argc, const char*const* argv);
 	//functions for setting protocol parameters
-	int get_ratek() {return rate_k;}
-	int get_codingdepth() {return coding_depth;}
-  int get_coding_wnd() {return coding_wnd;}
 	double get_linkdelay() {return lnk_delay_;}
 	double get_linkbw() {return lnk_bw_;}
-	int get_apppktsize() {return app_pkt_Size_;}
+  int get_coding_wnd() {return coding_wnd;}
 	//functions used in statistics logging
-  double get_wnd() {return wnd_;}
 	double get_start_time() {return start_time;}
 	double get_total_packets_sent() {return packets_sent;}
   double get_total_coded_packets_sent() {return coded_pkts_sent;}
   double get_total_retransmissions() {return pkt_rtxs;}
   double get_total_pause_time() {return total_pause_time;}
  protected:
-	ARQHandler arqh_;
+	CARQHandler arqh_;
 	Handler* handler_;
 
 	Packet *pending; //used for storing a native packet from queue that finds the channel blocked_
@@ -62,10 +70,10 @@ class ARQTx : public Connector {
 	int retry_limit_; //maximum number of retransmissions allowed for each frame
 
 	Packet **pkt_buf; //buffer used for storing frames under transmission (maximum size of wnd_)
-	ARQStatus *status; //the status of each frame under transmission
+	CARQStatus *status; //the status of each frame under transmission
 	int *num_rtxs; //number of retransmisions for each frame under transmission
 	int *pkt_uids; //used for debugging purposes
-  double *sent_time; //the time a packet was transmitted (either when it is a new packet or a retransmission)
+	CARQTimeoutEvent **timeout_events; //buffer for storing pointers to timeout events
   vector<int> most_recent_sent; //|coding_wnd| last sent packets (new ones or retransmissions)
 
 	int blocked_; //switch set to 1 when Tx engaged in transmiting a frame, 0 otherwise
@@ -73,21 +81,24 @@ class ARQTx : public Connector {
 	int most_recent_sq_; //sequence number of most recent frame to be sent
 	int num_pending_retrans_; //number of frames needed to be retransmitted (after the first attempt)
 	int rate_k; //number of native packets sent before coded
-	int coding_depth; //the number of coding cycles used to create a coded
+  int coding_depth; //the number of coding cycles used to create a coded
   int coding_wnd; //coding window used for creating coded packets, <= wnd_
 
 	double lnk_bw_; //the bandwidth of the link_
 	double lnk_delay_; //the delay of the link_
 	int app_pkt_Size_; //the size of the pkt created by the app_pkt_Size_
-  double timeout_; //the period of time waiting for receiving an ack
+	double timeout_; //the time used to trigger nack()
+
+  RandomVariable *ranvar_; //a random variable for generating errors in ACK delivery
+	double err_rate; //the rate of errors in ACK delivery
 
 	bool debug;
 
 	//Statistics
-	double start_time; //time when 1st packet arrived at ARQTx::recv
+	double start_time; //time when 1st packet arrived at CARQTx::recv
 	double packets_sent; //unique packets sent
-	double coded_pkts_sent; //total number of sent coded pkts
-	double pkt_rtxs; //the total number of retransmissions
+  double coded_pkts_sent; //total number of sent coded pkts
+  double pkt_rtxs; //the total number of retransmissions
   double total_pause_time; //the total time the sender spend paused because the window reached its limit
   double start_of_pause_period; //the start of a pause period, used to calculate the total_pause_time
 
@@ -100,55 +111,47 @@ class ARQTx : public Connector {
 
 };
 
-class ARQRx : public Connector {
+class CARQRx : public Connector {
  public:
-	ARQRx();
-	//ARQRx()  {arq_tx_=0; };
+	CARQRx();
 	int command(int argc, const char*const* argv);
 	virtual void recv(Packet*, Handler*) = 0;
  protected:
-	ARQTx* arq_tx_;
+	CARQTx* arq_tx_;
 
 	double delay_; //delay for returning feedback
-	double timeout_; //the time used to trigger nack()
 };
 
-class ARQNacker;
+class CARQNacker;
 
-class ARQAcker : public ARQRx {
+class CARQAcker : public CARQRx {
 public:
-	ARQAcker();
-	virtual void handle(Event*);
+	CARQAcker();
 	void recv(Packet*, Handler*);
 	int command(int argc, const char*const* argv);
 	void print_stats();
-	void log_lost_pkt(Packet *p, ACKEvent *e);
-	void delete_nack_event(int seq_num);
+	void log_lost_pkt(Packet *p);
  protected:
 	int wnd_;  //window size
 	int sn_cnt; //the total count of used sequence numbers
 	Packet **pkt_buf; //buffer used for storing packets arriving out of order
 	Packet **lost_pkt_buf; //buffer used for storing lost packets
-	ACKEvent **event_buf; //buffer for storing pointers to NACK events
 	int last_fwd_sn_; //sequence number of the last frame forwarded to the upper layer
 	int most_recent_acked; //sequence number of the last frame for which an ack has been sent
 
-	RandomVariable *ranvar_; //a random variable for generating errors in ACK delivery
-	double err_rate; //the rate of errors in ACK delivery
-
-	PacketStatus *status; //status of received packets
-  set<int> involved_known_packets; //already correctly received packets involved in coded_packets
+	CARQPacketStatus *status; //status of received packets
+	set<int> involved_known_packets; //already correctly received packets involved in coded_packets
   set<int> known_packets; //correctly received packets (used for creating a cumulative ACK)
   set<int> seen_packets; //the set of seen packets
 	set<int> lost_packets; //how many packets are lost
   vector<vector<int> > coded_packets; //the received coded pkts that are useful for decoding
 
-	ARQNacker* nacker;
+	CARQNacker* nacker;
 
 	bool debug;
 
 	//Statistics
-	double finish_time; //time when the last pkt was delivered to the receiver's upper layer, used to calculate throughput
+  double finish_time; //time when the last pkt was delivered to the receiver's upper layer, used to calculate throughput
 	double delivered_pkts; //the total number of pkts delivered to the receiver's upper layer
 	double delivered_data; //the total number of bytes delivered to the receiver's upper layer
 	double sum_of_delay; //sum of delays for every packet delivered, used to calculate average delay
@@ -166,8 +169,8 @@ public:
   double last_delay_sample; //the last delay, used to calculate delay jitter
 
 	void deliver_frames(int steps, bool mindgaps, Handler *h);
-	void clean_decoding_matrix(int from, int to);
-  void clean_known_packets(int from, int to); //function that updates known_packets' contents based on sender's window estimation
+  void clean_decoding_matrix(int from, int to);
+  //void clean_known_packets(int from, int to);
   void delete_lost_and_associated_coded_from_matrix(int pkt_to_remove);
   void delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove);
   void delete_known_from_matrix(int pkt_to_remove);
@@ -177,18 +180,16 @@ public:
  private:
 	Packet* create_coded_ack();
 	void parse_coded_packet(Packet *p, Handler *h);
-	void parse_coded_ack(Packet *p);
 	bool decode(Handler* h, bool afterCoded);
 
 };
 
-class ARQNacker : public ARQRx {
+class CARQNacker : public CARQRx {
  public:
-	ARQNacker();
-	virtual void handle(Event*);
+	CARQNacker();
 	void recv(Packet*, Handler*);
 	int command(int argc, const char*const* argv);
  protected:
-	ARQAcker* acker;
+	CARQAcker* acker;
 	bool debug;
 };
