@@ -391,7 +391,7 @@ bool CaterpillarTx::parse_nack(int rcv_sn)
 			Packet *newp = pkt_buf[rcv_sn%wnd_]->copy();
       timeout_events[rcv_sn]->expirationTime = Scheduler::instance().clock() + timeout_;
       timeout_events[rcv_sn]->isCancelled = true;
-      Scheduler::instance().schedule(this, timeout_events[rcv_sn], timeout_);
+      //Scheduler::instance().schedule(this, timeout_events[rcv_sn], timeout_);
       pkt_rtxs++;
       native_counter++;
       if (native_counter == rate_k){ //prepare a coded frame
@@ -497,13 +497,15 @@ void CaterpillarTx::resume()
       pnew = create_coded_packet();
       HDR_CMN(pnew)->aomdv_salvage_count_ = HDR_CMN(pkt_buf[runner_])->uid(); //add the uid of the original
       HDR_CMN(pnew)->opt_num_forwards_ = HDR_CMN(pnew)->opt_num_forwards_ + HDR_CMN(pkt_buf[runner_])->opt_num_forwards_; //add the sn of original
+      timeout_events[wrunner_]->expirationTime = Scheduler::instance().clock() + timeout_;
+      timeout_events[wrunner_]->isCancelled = false;
+      Scheduler::instance().schedule(this, timeout_events[wrunner_], timeout_);
     } else { //the case of RTXPRE: non expired, send original
       pnew = (pkt_buf[runner_])->copy();
+      timeout_events[wrunner_]->isCancelled = true;
+      Scheduler::instance().schedule(this, timeout_events[wrunner_], timeout_);
     }
     status[runner_] = SENT;
-    timeout_events[wrunner_]->expirationTime = Scheduler::instance().clock() + timeout_;
-    timeout_events[wrunner_]->isCancelled = false;
-    Scheduler::instance().schedule(this, timeout_events[wrunner_], timeout_);
     pkt_rtxs++;
     native_counter++;
 		if (native_counter == rate_k){ //prepare a coded frame
