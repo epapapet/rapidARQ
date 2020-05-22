@@ -38,26 +38,24 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk timeoutt limit vgseed acker
     $tARQ_ set lnk_delay_ [$self delay]
     $tARQ_ set app_pkt_Size_ [expr {$apktsz + 40}]
     $tARQ_ setup-wnd $wndsize $ratekk $timeoutt
-    
+
+    set vagrngn2 [new RNG]
+    $vagrngn2 seed [expr {$vgseed + 1}]
+    set vagranvarn2 [new RandomVariable/Uniform]
+    $vagranvarn2 use-rng $vagrngn2
+    $tARQ_ ranvar $vagranvarn2
+    $tARQ_ set-err $ackerr    
 
     #Acker set up
     $acker_ attach-CaterpillarTx $tARQ_
     $acker_ setup-CaterpillarNacker $nacker_
     $acker_ setup-wnd $wndsize
-    $acker_ update-delays $timeoutt
+    $acker_ update-delays
     
-    set vagrngn2 [new RNG]
-    $vagrngn2 seed [expr {$vgseed + 1}]
-    set vagranvarn2 [new RandomVariable/Uniform]
-    $vagranvarn2 use-rng $vagrngn2
-    $acker_ ranvar $vagranvarn2
-    $acker_ set-err $ackerr    
-
-
     #Nacker set up
     $nacker_ attach-CaterpillarTx $tARQ_
 	$nacker_ setup-CaterpillarAcker $acker_
-    $nacker_ update-delays $timeoutt
+    $nacker_ update-delays
 
     
     #Connections between Tx, Acker, Nacker, queue, drop-target and Acker target

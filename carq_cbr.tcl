@@ -1,6 +1,6 @@
 set arg_cnt [lindex $argc]
 if {$arg_cnt != 13} {
-    puts "# usage: ns <scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <timeout> <simulation_time> <seed>"
+    puts "# usage: ns <scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <timeout> <simulation_time> <seed>"
     puts "# <bandwidth> : in bps, example: set to 5Mbps -> 5M or 5000000"
     puts "# <propagation_delay> : in secs, example: set to 30ms -> 30ms or 0.03"
     puts "# <window_size> : arq window size in pkts"
@@ -10,58 +10,55 @@ if {$arg_cnt != 13} {
     puts "# <ack_rate> : the error rate in the return channel (error rate for ACKs)"
     puts "# <num_rtx> : the number of retransmissions allowed for a native pkt"
     puts "# <rate_k> : the number of native pkts sent before creating a coded pkt (actually define the code rate)"
-    puts "# <coding_depth> : the number of coding cycles used to create a coded pkt"
+	puts "# <coding_depth> : the number of coding cycles used to create a coded pkt"    
 	puts "# <timeout> : the time for expiring an non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v"
     puts "# <simulation_time> : the simulation time in secs"
     puts "# <seed> : seed used to produce randomness"
     exit 1
 }
 
-
-ARQTx set retry_limit_ 100
-ARQTx set rate_k 1000
-ARQTx set coding_depth 0
-ARQTx set lnk_delay_ 30ms
-ARQTx set lnk_bw_ 10M
-ARQTx set app_pkt_Size_ 1000
-ARQTx set debug_ NULL
-ARQAcker set debug_ NULL
-ARQNacker set debug_ NULL
+CARQTx set retry_limit_ 100
+CARQTx set rate_k 1000
+CARQTx set coding_depth 0
+CARQTx set lnk_delay_ 30ms
+CARQTx set lnk_bw_ 10M
+CARQTx set app_pkt_Size_ 1000
+CARQTx set debug_ NULL
+CARQAcker set debug_ NULL
+CARQNacker set debug_ NULL
 
 SimpleLink instproc link-arq { wndsize apktsz ratekk coddpth timeoutt limit vgseed ackerr } {
     $self instvar link_ link_errmodule_ queue_ drophead_ head_
     $self instvar tARQ_ acker_ nacker_
  
-    set tARQ_ [new ARQTx]
-    set acker_ [new ARQAcker]
-    set nacker_ [new ARQNacker]
+    set tARQ_ [new CARQTx]
+    set acker_ [new CARQAcker]
+    set nacker_ [new CARQNacker]
 
     #Tx set up
     $tARQ_ set retry_limit_ $limit
     $tARQ_ set lnk_bw_ [$self bw]
     $tARQ_ set lnk_delay_ [$self delay]
     $tARQ_ set app_pkt_Size_ $apktsz
-	$tARQ_ setup-wnd $wndsize $ratekk $coddpth $timeoutt
-    
+    $tARQ_ setup-wnd $wndsize $ratekk $coddpth $timeoutt
 
-    #Acker set up
-    $acker_ attach-ARQTx $tARQ_
-    $acker_ setup-ARQNacker $nacker_
-    $acker_ setup-wnd $wndsize
-    $acker_ update-delays $timeoutt
-    
     set vagrngn2 [new RNG]
     $vagrngn2 seed [expr {$vgseed + 1}]
     set vagranvarn2 [new RandomVariable/Uniform]
     $vagranvarn2 use-rng $vagrngn2
-    $acker_ ranvar $vagranvarn2
-    $acker_ set-err $ackerr    
+    $tARQ_ ranvar $vagranvarn2
+    $tARQ_ set-err $ackerr    
 
-
+    #Acker set up
+    $acker_ attach-CARQTx $tARQ_
+    $acker_ setup-CARQNacker $nacker_
+    $acker_ setup-wnd $wndsize
+    $acker_ update-delays
+    
     #Nacker set up
-    $nacker_ attach-ARQTx $tARQ_
-	$nacker_ setup-ARQAcker $acker_
-    $nacker_ update-delays $timeoutt
+    $nacker_ attach-CARQTx $tARQ_
+	$nacker_ setup-CARQAcker $acker_
+    $nacker_ update-delays
 
     
     #Connections between Tx, Acker, Nacker, queue, drop-target and Acker target

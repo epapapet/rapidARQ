@@ -8,6 +8,7 @@
 class CaterpillarTx;
 enum CaterpillarARQStatus {IDLE,SENT,ACKED,RTX,RTXPRE,DROP}; //statuses for packets sent by CaterpillarTx
 enum CaterpillarPacketStatus {NONE,MISSING,RECEIVED,DECODED}; //for CaterpillarAcker, in order to tell apart different types of packets
+enum CaterpillarEventTypes {TIMEOUT,ACK}; //types of events
 
 class CaterpillarHandler : public Handler {
 public:
@@ -17,32 +18,40 @@ private:
     CaterpillarTx& arq_tx_;
 };
 
-class CaterpillarACKEvent : public Event {
+class CaterpillarEvent : public Event {
  public:
-	int ACK_sn;
-	int ACK_uid;
-	Packet* coded_ack;
-	bool isCancelled;
+   CaterpillarEventTypes type;
+   int sn;
+   int uid;
+};
+
+class CaterpillarACKEvent : public CaterpillarEvent {
+ public:
+   Packet* coded_ack;
+};
+
+class CaterpillarTimeoutEvent : public CaterpillarEvent {
+ public:
+   double expirationTime;
+   bool isCancelled;
 };
 
 class CaterpillarTx : public Connector {
  public:
 	CaterpillarTx();
 	void recv(Packet*, Handler*);
-	void nack(int rcv_sn, int rcv_uid);
-  bool nack_incr(int rcv_sn);
-	void ack(int rcv_sn, int rcv_uid);
-	void ack(Packet *p); //overloaded ack method
-  bool ack_incr(int rcv_sn);
+	void timeout_expired(int rcv_sn, int rcv_uid);
+	//void ack(int rcv_sn, int rcv_uid);
+	void parse_cumulative_ack(Packet *p); //overloaded ack method
+  bool parse_ack(int rcv_sn, bool batch);
+  bool parse_nack(int rcv_sn);
 	void resume();
+	virtual void handle(Event* e);
 	int command(int argc, const char*const* argv);
 	//functions for setting protocol parameters
-	int get_ratek() {return rate_k;}
 	double get_linkdelay() {return lnk_delay_;}
 	double get_linkbw() {return lnk_bw_;}
-	int get_apppktsize() {return app_pkt_Size_;}
 	//functions used in statistics logging
-  double get_wnd() {return wnd_;}
 	double get_start_time() {return start_time;}
 	double get_total_packets_sent() {return packets_sent;}
   double get_total_coded_packets_sent() {return coded_pkts_sent;}
@@ -63,7 +72,7 @@ class CaterpillarTx : public Connector {
 	CaterpillarARQStatus *status; //the status of each frame under transmission
 	int *num_rtxs; //number of retransmisions for each frame under transmission
 	int *pkt_uids; //used for debugging purposes
-  double *sent_time; //the time a packet was transmitted (either when it is a new packet or a retransmission)
+	CaterpillarTimeoutEvent **timeout_events; //buffer for storing pointers to timeout events
 
 	int blocked_; //switch set to 1 when Tx engaged in transmiting a frame, 0 otherwise
 	int last_acked_sq_; //sequence number of last acked frame
@@ -74,7 +83,10 @@ class CaterpillarTx : public Connector {
 	double lnk_bw_; //the bandwidth of the link_
 	double lnk_delay_; //the delay of the link_
 	int app_pkt_Size_; //the size of the pkt created by the app_pkt_Size_
-  double timeout_; //the period of time waiting for receiving an ack
+	double timeout_; //the time used to trigger nack()
+
+  RandomVariable *ranvar_; //a random variable for generating errors in ACK delivery
+	double err_rate; //the rate of errors in ACK delivery
 
 	bool debug;
 
@@ -98,14 +110,12 @@ class CaterpillarTx : public Connector {
 class CaterpillarRx : public Connector {
  public:
 	CaterpillarRx();
-	//CaterpillarRx()  {arq_tx_=0; };
 	int command(int argc, const char*const* argv);
 	virtual void recv(Packet*, Handler*) = 0;
  protected:
 	CaterpillarTx* arq_tx_;
 
 	double delay_; //delay for returning feedback
-	double timeout_; //the time used to trigger nack()
 };
 
 class CaterpillarNacker;
@@ -113,23 +123,17 @@ class CaterpillarNacker;
 class CaterpillarAcker : public CaterpillarRx {
 public:
 	CaterpillarAcker();
-	virtual void handle(Event*);
 	void recv(Packet*, Handler*);
 	int command(int argc, const char*const* argv);
 	void print_stats();
-	void log_lost_pkt(Packet *p, CaterpillarACKEvent *e);
-	void delete_nack_event(int seq_num);
+	void log_lost_pkt(Packet *p);
  protected:
 	int wnd_;  //window size
 	int sn_cnt; //the total count of used sequence numbers
 	Packet **pkt_buf; //buffer used for storing packets arriving out of order
 	Packet **lost_pkt_buf; //buffer used for storing lost packets
-	CaterpillarACKEvent **event_buf; //buffer for storing pointers to NACK events
 	int last_fwd_sn_; //sequence number of the last frame forwarded to the upper layer
 	int most_recent_acked; //sequence number of the last frame for which an ack has been sent
-
-	RandomVariable *ranvar_; //a random variable for generating errors in ACK delivery
-	double err_rate; //the rate of errors in ACK delivery
 
 	CaterpillarPacketStatus *status; //status of received packets
 	set<int> involved_known_packets; //already correctly received packets involved in coded_packets
@@ -171,7 +175,6 @@ public:
  private:
 	Packet* create_coded_ack();
 	void parse_coded_packet(Packet *p, Handler *h);
-	void parse_coded_ack(Packet *p);
 	bool decode(Handler* h, bool afterCoded);
 
 };
@@ -179,7 +182,6 @@ public:
 class CaterpillarNacker : public CaterpillarRx {
  public:
 	CaterpillarNacker();
-	virtual void handle(Event*);
 	void recv(Packet*, Handler*);
 	int command(int argc, const char*const* argv);
  protected:
