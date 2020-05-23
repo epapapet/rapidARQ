@@ -336,6 +336,7 @@ OBJ_CC = \
 	arq/arq.o \
 	arq/tetrys.o \
 	arq/caterpillar.o \
+	arq/sr-arq.o \
 	arq-sr/arq.o \
 	$(OBJ_STL)
 

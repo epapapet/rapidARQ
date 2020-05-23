@@ -89,4 +89,32 @@ where:
 * \<simulation_time\> : the simulation time in secs
 * \<seed\> : seed used to produce randomness
 
-\<cbr_rate\> parameter is not available in case *tetrys_ftp.tcl* is executed. 
+\<cbr_rate\> parameter is not available in case *tetrys_ftp.tcl* is executed.
+
+
+### _Selective Repeat_
+
+A simulation with Selective Repeat (SR) ARQ can be executed by using the following syntax:
+
+```
+
+./ns arq/<scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <timeout> <simulation_time> <seed>
+```
+
+where:
+
+* \<scriptfile\> : sr_cbr.tcl or sr_ftp.tcl 
+* \<bandwidth\> : in bps, example: set to 5Mbps -> 5M or 5000000
+* \<propagation_delay\> : in secs, example: set to 30ms -> 30ms or 0.03
+* \<window_size\> : arq window size in pkts
+* \<cbr_rate\> : the rate of the cbr applications, in bps, example: set to 3Mbps -> 3M or 3000000
+* \<pkt_size\> : the size of a UDP pkt (including UDP and IP headers) when UDP is used or the size of a TCP segment (not including the TCP and IP headers) when TCP is used
+* \<err_rate\> : the error rate in the forward channel (error rate for frames)
+* \<ack_rate\> : the error rate in the return channel (error rate for ACKs)
+* \<num_rtx\> : the number of retransmissions allowed for a native pkt
+* \<timeout\> : the time for expiring a non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v
+* \<simulation_time\> : the simulation time in secs
+* \<seed\> : seed used to produce randomness
+
+
+\<cbr_rate\> parameter is not available in case *sr_ftp.tcl* is executed. 
