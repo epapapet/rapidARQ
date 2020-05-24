@@ -1,12 +1,13 @@
 set arg_cnt [lindex $argc]
-if {$arg_cnt != 13} {
-    puts "# usage: ns <scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <timeout> <simulation_time> <seed>"
+if {$arg_cnt != 14} {
+    puts "# usage: ns <scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <num_rtx> <rate_k> <coding_depth> <timeout> <simulation_time> <seed>"
     puts "# <bandwidth> : in bps, example: set to 5Mbps -> 5M or 5000000"
     puts "# <propagation_delay> : in secs, example: set to 30ms -> 30ms or 0.03"
     puts "# <window_size> : arq window size in pkts"
     puts "# <cbr_rate> : the rate of the cbr applications, in bps, example: set to 3Mbps -> 3M or 3000000"
     puts "# <pkt_size> : the size of udp pkt (including UDP and IP headers)"
-    puts "# <err_rate> : the error rate in the forward channel (error rate for frames)"
+    puts "# <err_rate> : the error rate in the forward channel (error rate for frames) during a burst period"
+    puts "# <burst_duration> : 0,..,1 -> the percentage of time that the channel is in an error burst state"
     puts "# <ack_rate> : the error rate in the return channel (error rate for ACKs)"
     puts "# <num_rtx> : the number of retransmissions allowed for a native pkt"
     puts "# <rate_k> : the number of native pkts sent before creating a coded pkt (actually define the code rate)"
@@ -98,34 +99,72 @@ $ns duplex-link $n1 $n3 $link_bwd $link_delay DropTail
 
 #=== Create error and ARQ module ===
 set window [lindex $argv 2]
-set em [new ErrorModel]
-$em set rate_ [lindex $argv 5]
 
-$em set enable_ 1
-$em unit pkt
-$em set bandwidth_ $link_bwd
+#Create uniform Errormodel representing first state
+set tmp [new ErrorModel]
+$tmp set rate_ 0
+$tmp set enable_ 1
+$tmp set bandwidth_ $link_bwd
+set vagrng00 [new RNG]
+$vagrng00 seed [expr {[lindex $argv 13] + 10}]
+set vagranvar00 [new RandomVariable/Uniform]
+$vagranvar00 use-rng $vagrng00
+$tmp ranvar $vagranvar00
 
-set vagrng [new RNG]
-$vagrng seed [lindex $argv 12]
-set vagranvar [new RandomVariable/Uniform]
-$vagranvar use-rng $vagrng
+#Create uniform Errormodel representing second state
+set tmp1 [new ErrorModel]
+$tmp1 set rate_ [lindex $argv 5]
+$tmp1 set enable_ 1
+$tmp1 set bandwidth_ $link_bwd
+set vagrng01 [new RNG]
+$vagrng01 seed [lindex $argv 13]
+set vagranvar01 [new RandomVariable/Uniform]
+$vagranvar01 use-rng $vagrng01
+$tmp ranvar $vagranvar01
 
-$em ranvar $vagranvar
+if {[lindex $argv 6] > 1 || [lindex $argv 6] < 0} {
+    puts "Burst duration percentage should be in \[0, 1\]"
+    exit 1;
+}
+if {[string first "M" [lindex $argv 0]] != -1} {
+    set bwd_per_string [string map {"M" ""} [lindex $argv 0]]
+    set bwdcalc [expr {double($bwd_per_string)*1000000}]
+} else {
+    set bwdcalc [lindex $argv 0]
+}
+set bduration [lindex $argv 6]
+set wndduration [expr {8.0*$window*[lindex $argv 4]/$bwdcalc}]
+set state1nduration [expr {(1- $bduration)*$wndduration}]
+set state2nduration [expr {$bduration*$wndduration}]
+
+
+# Array of states (error models)
+set m_states [list $tmp $tmp1]
+# Durations for each of the states, tmp, tmp1 and tmp2, respectively
+set m_periods [list $state1nduration $state2nduration]
+# Transition state model matrix
+set m_transmx { {0 1} {1 0}}
+set m_trunit pkt
+ # Use time-based transition
+set m_sttype time
+set m_nstates 2
+set m_nstart [lindex $m_states 0]
+set em [new ErrorModel/MultiState $m_states $m_periods $m_transmx $m_trunit $m_sttype $m_nstates $m_nstart]
+
 $em drop-target [new Agent/Null]
-
 $ns link-lossmodel $em $n1 $n3
 
-set num_rtx [lindex $argv 7]
-set rate_k [lindex $argv 8]
-set cod_dpth [lindex $argv 9]
-if {[string first "ms" [lindex $argv 10]] != -1} {
-    set timeout_per_string [string map {"ms" ""} [lindex $argv 10]]
+set num_rtx [lindex $argv 8]
+set rate_k [lindex $argv 9]
+set cod_dpth [lindex $argv 10]
+if {[string first "ms" [lindex $argv 11]] != -1} {
+    set timeout_per_string [string map {"ms" ""} [lindex $argv 11]]
     set timeout_period [expr {double($timeout_per_string)/1000}]
 } else {
-    set timeout_period [lindex $argv 10]
+    set timeout_period [lindex $argv 11]
 }
 set apppktSize [lindex $argv 4]
-set receiver [$ns link-arq $window $apppktSize $rate_k $cod_dpth $timeout_period $num_rtx $n1 $n3 [lindex $argv 12] [lindex $argv 6]]
+set receiver [$ns link-arq $window $apppktSize $rate_k $cod_dpth $timeout_period $num_rtx $n1 $n3 [lindex $argv 13] [lindex $argv 7]]
 
 #=== Set up a UDP connection ===
 set udp [new Agent/UDP]
@@ -143,7 +182,7 @@ $cbr attach-agent $udp
 $ns connect $udp $sink
 
 $ns at 0.0 "$cbr start"
-$ns at [lindex $argv 11] "$cbr stop"
-$ns at [expr {[lindex $argv 11] + 0.5}] print_stats
-$ns at [expr {[lindex $argv 11] + 1.0}] "exit 0"
+$ns at [lindex $argv 12] "$cbr stop"
+$ns at [expr {[lindex $argv 12] + 0.5}] print_stats
+$ns at [expr {[lindex $argv 12] + 1.0}] "exit 0"
 $ns run
