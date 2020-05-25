@@ -689,18 +689,33 @@ void SRARQAcker::print_stats(double err, double ack, double sim_time, int seed)
   printf("//-------------------------------------------------//\n");
 
   //Append statistics if file exists, otherwise create new file and insert headers as well
+  if(access("arq/results", F_OK) != 0)
+	{
+    char command[256];
+    sprintf(command, "mkdir -p %s", "arq/results");
+    system(command);
+  }
   FILE *fp;
   fp = fopen("arq/results/sr-arq.txt", "a+");
   if(fp == NULL){
     printf("Error in creating file.\n");
     exit(0);
   }
+  //int cntLines = 0;
   fseek(fp, 0, SEEK_END);
   if(ftell(fp) == 0) {
       char* header =  "bandwidth  propagation_delay window_size cbr_rate  pkt_size  err_rate  ack_rate  num_rtx timeout simulation_time seed  Start time (sec) Finish time (sec) Total number of delivered pkts  Delivered data (in mega bytes)  Total throughput (Mbps) Total pause time (secs) Unique packets sent  Mean delay (msec) Maximum delay (msec)  Minimum delay (msec)  Mean delay jitter (msec)  Avg num of retransmissions  Packet loss rate";
     fprintf(fp, "%s\n", header);
+    //cntLines = 1;
+  } /*else {
+    char command_two[256];
+    char numLines[256];
+    sprintf(command_two, "wc -l < %s", "arq/results/caterpillar.txt");
+    fgets(numLines, 256, popen(command_two, "r"));
+    cntLines = (int)strtoull(numLines, NULL, 10);
   }
-  fprintf(fp, "%.0f %.3f  %d  %.0f  %d  %.3f  %.3f  %d  %.3f  %.0f  %d  %f %f  %.0f  %.3f  %f  %f  %.0f  %.0f  %f  %f  %f  %f  %f\n", arq_tx_->get_linkbw(), arq_tx_->get_linkdelay(), wnd_, arq_tx_->get_linkbw(), arq_tx_->get_apppktsize(), err, ack, arq_tx_->get_retry_limit(), arq_tx_->get_timeout(), sim_time, seed, arq_tx_->get_start_time(), finish_time, delivered_pkts, delivered_data/1048576, throughput * 1.0e-6, arq_tx_->get_total_pause_time(), arq_tx_->get_total_packets_sent(), mean * 1.0e+3, max_delay * 1.0e+3, min_delay * 1.0e+3, meanjitter * 1.0e+3, avg_rtxs, packet_loss_rate);
+  fprintf(fp, "%d %.0f %.3f  %d  %.0f  %d  %.3f  %.3f  %d  %.3f  %.0f  %d  %f %f  %.0f  %.3f  %f  %f  %.0f  %.0f  %f  %f  %f  %f  %f\n", cntLines, arq_tx_->get_linkbw(), arq_tx_->get_linkdelay(), wnd_, arq_tx_->get_linkbw(), arq_tx_->get_apppktsize(), err, ack, arq_tx_->get_retry_limit(), arq_tx_->get_timeout(), sim_time, seed, arq_tx_->get_start_time(), finish_time, delivered_pkts, delivered_data/1048576, throughput * 1.0e-6, arq_tx_->get_total_pause_time(), arq_tx_->get_total_packets_sent(), mean * 1.0e+3, max_delay * 1.0e+3, min_delay * 1.0e+3, meanjitter * 1.0e+3, avg_rtxs, packet_loss_rate);*/
+  fprintf(fp, "%.0f %.3f  %d  %.0f  %d  %.3f  %.3f  %d  %.3f  %.0f  %d  %f %f  %.0f  %.3f  %f  %f  %.0f  %.0f  %f  %f  %f  %f  %f\n", arq_tx_->get_linkbw(), arq_tx_->get_linkdelay(), wnd_, arq_tx_->get_linkbw(), arq_tx_->get_apppktsize(), err, ack, arq_tx_->get_retry_limit(), arq_tx_->get_timeout(), sim_time, seed, arq_tx_->get_start_time(), finish_time, delivered_pkts, delivered_data/1048576, throughput * 1.0e-6, arq_tx_->get_total_pause_time(), arq_tx_->get_total_packets_sent(), mean * 1.0e+3, max_delay * 1.0e+3, min_delay * 1.0e+3, meanjitter * 1.0e+3, avg_rtxs, packet_loss_rate);  
   fclose(fp);
 } //end of print_stats
 

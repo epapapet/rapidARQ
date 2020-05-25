@@ -4,6 +4,7 @@
 #include <vector>
 #include <map>
 #include <algorithm>
+#include <unistd.h>
 
 class TetrysTx;
 enum TetrysARQStatus {IDLE,SENT,ACKED,DROP}; //statuses for packets sent by TetrysTx

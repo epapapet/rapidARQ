@@ -4,6 +4,7 @@
 #include <vector>
 #include <map>
 #include <algorithm>
+#include <unistd.h>
 
 class CaterpillarTx;
 enum CaterpillarARQStatus {IDLE,SENT,ACKED,RTX,RTXPRE,DROP}; //statuses for packets sent by CaterpillarTx
