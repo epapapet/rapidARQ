@@ -37,7 +37,7 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk ackperr timeoutt vgseed ack
     $tARQ_ set lnk_bw_ [$self bw]
     $tARQ_ set lnk_delay_ [$self delay]
     $tARQ_ set app_pkt_Size_ $apktsz
-	$tARQ_ setup-wnd $wndsize $ratekk $ackperr $timeoutt
+	$tARQ_ setup-wnd $wndsize $ratekk $timeoutt
 
 	set vagrngn2 [new RNG]
     $vagrngn2 seed [expr {$vgseed + 1}]
@@ -50,12 +50,12 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk ackperr timeoutt vgseed ack
     $acker_ attach-TetrysTx $tARQ_
     $acker_ setup-TetrysNacker $nacker_
     $acker_ setup-wnd $wndsize
-    $acker_ update-delays
+    $acker_ update-delays $ackperr
 
     #Nacker set up
     $nacker_ attach-TetrysTx $tARQ_
 	$nacker_ setup-TetrysAcker $acker_
-    $nacker_ update-delays
+    $nacker_ update-delays $ackperr
 
     
     #Connections between Tx, Acker, Nacker, queue, drop-target and Acker target

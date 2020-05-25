@@ -8,7 +8,7 @@
 class TetrysTx;
 enum TetrysARQStatus {IDLE,SENT,ACKED,DROP}; //statuses for packets sent by TetrysTx
 enum TetrysPacketStatus {NONE,MISSING,RECEIVED,DECODED}; //for TetrysAcker, in order to tell apart different types of packets
-enum TetrysEventTypes {TIMEOUT,ACK}; //types of events
+enum TetrysEventTypes {TIMEOUT,ACK, ACKSCHEDULE}; //types of events
 
 class TetrysHandler : public Handler {
 public:
@@ -40,17 +40,18 @@ class TetrysTx : public Connector {
  public:
 	TetrysTx();
 	void recv(Packet*, Handler*);
-  void timeout_expired(int rcv_sn, int rcv_uid); //ex-nack
-	//void ack(int rcv_sn, int rcv_uid);
-	void parse_cumulative_ack(Packet *p); //overloaded ack method
-  bool parse_ack(int rcv_sn);
+	void timeout_expired(int rcv_sn, int rcv_uid);
+		void parse_cumulative_ack(Packet *p); //overloaded ack method
+  bool parse_ack(int rcv_sn, bool batch);
 	void resume();
 	virtual void handle(Event* e);
 	int command(int argc, const char*const* argv);
 	//functions for setting protocol parameters
+  double get_wnd() {return wnd_;}
+  double get_ratek() {return rate_k;}
+  double get_apppktsize() {return app_pkt_Size_;}
 	double get_linkdelay() {return lnk_delay_;}
 	double get_linkbw() {return lnk_bw_;}
-  double get_ack_period() {return ack_period;};
 	//functions used in statistics logging
 	double get_start_time() {return start_time;}
 	double get_total_packets_sent() {return packets_sent;}
@@ -69,7 +70,7 @@ class TetrysTx : public Connector {
 	Packet **pkt_buf; //buffer used for storing frames under transmission (maximum size of wnd_)
 	TetrysARQStatus *status; //the status of each frame under transmission
 	int *pkt_uids; //used for debugging purposes
-  TetrysTimeoutEvent **timeout_events; //buffer for storing pointers to timeout events
+	TetrysTimeoutEvent **timeout_events; //buffer for storing pointers to timeout events
 
 	int blocked_; //switch set to 1 when Tx engaged in transmiting a frame, 0 otherwise
 	int last_acked_sq_; //sequence number of last acked frame
@@ -79,10 +80,9 @@ class TetrysTx : public Connector {
 	double lnk_bw_; //the bandwidth of the link_
 	double lnk_delay_; //the delay of the link_
 	int app_pkt_Size_; //the size of the pkt created by the app_pkt_Size_
-  double ack_period; //the period for sending cumulative ACKs
-  double timeout_; //the time used to trigger nack()
+	double timeout_; //the time used to trigger nack()
 
-	RandomVariable *ranvar_; //a random variable for generating errors in ACK delivery
+  RandomVariable *ranvar_; //a random variable for generating errors in ACK delivery
 	double err_rate; //the rate of errors in ACK delivery
 
 	bool debug;
@@ -90,7 +90,7 @@ class TetrysTx : public Connector {
 	//Statistics
 	double start_time; //time when 1st packet arrived at TetrysTx::recv
 	double packets_sent; //unique packets sent
-	double coded_pkts_sent; //total number of sent coded pkts
+  double coded_pkts_sent; //total number of sent coded pkts
   double total_pause_time; //the total time the sender spend paused because the window reached its limit
   double start_of_pause_period; //the start of a pause period, used to calculate the total_pause_time
 
@@ -111,8 +111,7 @@ class TetrysRx : public Connector {
 	TetrysTx* arq_tx_;
 
 	double delay_; //delay for returning feedback
-  //double ack_period; //the period for sending cumulative ACKs
-	//double timeout_; //the time used to trigger nack()
+  double ack_period; //the period for sending cumulative ACKs
 };
 
 class TetrysNacker;
@@ -146,14 +145,14 @@ public:
 	bool debug;
 
 	//Statistics
-	double finish_time; //time when the last pkt was delivered to the receiver's upper layer, used to calculate throughput
+  double finish_time; //time when the last pkt was delivered to the receiver's upper layer, used to calculate throughput
 	double delivered_pkts; //the total number of pkts delivered to the receiver's upper layer
 	double delivered_data; //the total number of bytes delivered to the receiver's upper layer
 	double sum_of_delay; //sum of delays for every packet delivered, used to calculate average delay
   double sum_of_delay_jitter; //sum of delay jitter for every packet delivered, used to calculate average delay
   double avg_dec_matrix_size; //the avg size of the decoding matrix when decoding is performed (used to estimate processing overhead)
   double max_dec_matrix_size; //the maximum size of decoding matrix
-  double avg_inv_known_pkts_size; //the avg size of the involved_known_packets when decoding is performed (part of decoding matrix already in diagonal form)
+  double avg_inv_known_pkts_size; //the avg size of the involved_known_packets when decoding is performed
   double max_inv_known_pkts_size; //the maximum size of involved_known_packets
   double avg_known_pkts_size; //the avg size of the known_packets when decoding is performed (part of decoding matrix already in diagonal form)
   double max_known_pkts_size; //the maximum size of known_packets
@@ -164,7 +163,7 @@ public:
   double last_delay_sample; //the last delay, used to calculate delay jitter
 
 	void deliver_frames(int steps, bool mindgaps, Handler *h);
-	void clean_decoding_matrix(int from, int to);
+  void clean_decoding_matrix(int from, int to);
   void delete_lost_and_associated_coded_from_matrix(int pkt_to_remove);
   void delete_known_from_matrix(int pkt_to_remove);
   void delete_known_from_matrix_strict(int pkt_to_remove);
@@ -172,8 +171,7 @@ public:
  private:
 	Packet* create_coded_ack();
 	void parse_coded_packet(Packet *p, Handler *h);
-	//void parse_coded_ack(Packet *p);
-	void decode(Handler* h, bool afterCoded);
+	bool decode(Handler* h, bool afterCoded);
 
 };
 
