@@ -49,6 +49,10 @@ class SRARQTx : public Connector {
 	double get_total_packets_sent() {return packets_sent;}
   double get_total_retransmissions() {return pkt_rtxs;}
   double get_total_pause_time() {return total_pause_time;}
+  //functions used in statistics passed to files
+  int get_apppktsize(){return app_pkt_Size_;}
+  int get_retry_limit() {return retry_limit_;}
+  double get_timeout() {return timeout_;}
  protected:
 	SRARQHandler arqh_;
 	Handler* handler_;
@@ -110,7 +114,7 @@ public:
 	SRARQAcker();
 	void recv(Packet*, Handler*);
 	int command(int argc, const char*const* argv);
-	void print_stats();
+	void print_stats(double err, double ack, double sim_time, int seed);
 	void log_lost_pkt(Packet *p);
  protected:
 	int wnd_;  //window size

@@ -8,7 +8,6 @@ if {$arg_cnt != 10} {
     puts "# <err_rate> : the error rate in the forward channel (error rate for frames)"
     puts "# <ack_rate> : the error rate in the return channel (error rate for ACKs)"
     puts "# <num_rtx> : the number of retransmissions allowed for a native pkt"
-    puts "# <rate_k> : the number of native pkts sent before creating a coded pkt (actually define the code rate)"
     puts "# <timeout> : the time for expiring an non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v"
     puts "# <simulation_time> : the simulation time in secs"
     puts "# <seed> : seed used to produce randomness"
@@ -80,9 +79,9 @@ proc show_tcp_seqno {} {
     puts "At [$ns now], The tcp sequence number is [$tcp set t_seqno_]"
 }
 
-proc print_stats {} {
+proc print_stats {err_rate ack_rate sim_time seed} {
 	global receiver
-	$receiver print-stats
+	$receiver print-stats $err_rate $ack_rate $sim_time $seed
 }
 
 #=== Create the Simulator, Nodes, and Links ===
@@ -141,6 +140,6 @@ $ns connect $tcp $sink
 $ns at 0.0 "$ftp start"
 $ns at [lindex $argv 8] "$ftp stop"
 $ns at [expr {[lindex $argv 8] + 0.51}] show_tcp_seqno
-$ns at [expr {[lindex $argv 8] + 0.5}] print_stats
+$ns at [expr {[lindex $argv 8] + 0.5}] "print_stats [lindex $argv 4] [lindex $argv 5] [lindex $argv 8] [lindex $argv 9]"
 $ns at [expr {[lindex $argv 8] + 1.0}] "exit 0"
 $ns run

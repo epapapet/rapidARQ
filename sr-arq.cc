@@ -517,12 +517,7 @@ SRARQAcker::SRARQAcker()
 int SRARQAcker::command(int argc, const char*const* argv)
 {
 	Tcl& tcl = Tcl::instance();
-	if (argc == 2) {
-		if (strcmp(argv[1], "print-stats") == 0) {
-			print_stats(); //used for collecting statistics, along with the corresponding tcl command
-			return(TCL_OK);
-		}
-	} else if (argc == 3) {
+	if (argc == 3) {
 		if (strcmp(argv[1], "setup-wnd") == 0) {
 			if (*argv[2] == '0') {
 				tcl.resultf("Cannot setup NULL wnd\n");
@@ -541,6 +536,11 @@ int SRARQAcker::command(int argc, const char*const* argv)
 				return(TCL_ERROR);
 			}
 			nacker = (SRARQNacker*)TclObject::lookup(argv[2]);
+			return(TCL_OK);
+		}
+	} else if (argc == 6) {
+		if (strcmp(argv[1], "print-stats") == 0) {
+			print_stats(atof(argv[2]), atof(argv[3]), atof(argv[4]), atoi(argv[5])); //used for collecting statistics, along with the corresponding tcl command
 			return(TCL_OK);
 		}
 	} return SRARQRx::command(argc, argv);
@@ -662,7 +662,7 @@ void SRARQAcker::deliver_frames(int steps, bool mindgaps, Handler *h)
 
 }// end of deliver_frames
 
-void SRARQAcker::print_stats()
+void SRARQAcker::print_stats(double err, double ack, double sim_time, int seed)
 {
   printf("\n//------------ STATS FOR SRARQ --------------//\n");
 	printf("Start time (sec):\t\t\t%f\n", arq_tx_->get_start_time());
@@ -684,8 +684,24 @@ void SRARQAcker::print_stats()
 	printf("Mean delay jitter (msec):\t\t%f\n", meanjitter * 1.0e+3);
   double avg_rtxs = arq_tx_->get_total_retransmissions() / arq_tx_->get_total_packets_sent();
 	printf("Avg num of retransmissions:\t\t%f\n", avg_rtxs);
-	printf("Packet loss rate:\t\t\t%f\n", 1 - (delivered_pkts / arq_tx_->get_total_packets_sent()));
+  double packet_loss_rate = 1 - (delivered_pkts / arq_tx_->get_total_packets_sent());
+  printf("Packet loss rate:\t\t\t%f\n", packet_loss_rate);
   printf("//-------------------------------------------------//\n");
+
+  //Append statistics if file exists, otherwise create new file and insert headers as well
+  FILE *fp;
+  fp = fopen("arq/results/sr-arq.txt", "a+");
+  if(fp == NULL){
+    printf("Error in creating file.\n");
+    exit(0);
+  }
+  fseek(fp, 0, SEEK_END);
+  if(ftell(fp) == 0) {
+      char* header =  "bandwidth  propagation_delay window_size cbr_rate  pkt_size  err_rate  ack_rate  num_rtx timeout simulation_time seed  Start time (sec) Finish time (sec) Total number of delivered pkts  Delivered data (in mega bytes)  Total throughput (Mbps) Total pause time (secs) Unique packets sent  Mean delay (msec) Maximum delay (msec)  Minimum delay (msec)  Mean delay jitter (msec)  Avg num of retransmissions  Packet loss rate";
+    fprintf(fp, "%s\n", header);
+  }
+  fprintf(fp, "%.0f %.3f  %d  %.0f  %d  %.3f  %.3f  %d  %.3f  %.0f  %d  %f %f  %.0f  %.3f  %f  %f  %.0f  %.0f  %f  %f  %f  %f  %f\n", arq_tx_->get_linkbw(), arq_tx_->get_linkdelay(), wnd_, arq_tx_->get_linkbw(), arq_tx_->get_apppktsize(), err, ack, arq_tx_->get_retry_limit(), arq_tx_->get_timeout(), sim_time, seed, arq_tx_->get_start_time(), finish_time, delivered_pkts, delivered_data/1048576, throughput * 1.0e-6, arq_tx_->get_total_pause_time(), arq_tx_->get_total_packets_sent(), mean * 1.0e+3, max_delay * 1.0e+3, min_delay * 1.0e+3, meanjitter * 1.0e+3, avg_rtxs, packet_loss_rate);
+  fclose(fp);
 } //end of print_stats
 
 SRARQNacker::SRARQNacker()

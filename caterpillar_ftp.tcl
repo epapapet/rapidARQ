@@ -80,9 +80,9 @@ proc show_tcp_seqno {} {
     puts "At [$ns now], The tcp sequence number is [$tcp set t_seqno_]"
 }
 
-proc print_stats {} {
+proc print_stats {err_rate ack_rate sim_time seed} {
 	global receiver
-	$receiver print-stats
+	$receiver print-stats $err_rate $ack_rate $sim_time $seed
 }
 
 #=== Create the Simulator, Nodes, and Links ===
@@ -142,6 +142,6 @@ $ns connect $tcp $sink
 $ns at 0.0 "$ftp start"
 $ns at [lindex $argv 9] "$ftp stop"
 $ns at [expr {[lindex $argv 9] + 0.51}] show_tcp_seqno
-$ns at [expr {[lindex $argv 9] + 0.5}] print_stats
+$ns at [expr {[lindex $argv 9] + 0.5}] "print_stats [lindex $argv 4] [lindex $argv 5] [lindex $argv 9] [lindex $argv 10]"
 $ns at [expr {[lindex $argv 9] + 1.0}] "exit 0"
 $ns run

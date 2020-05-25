@@ -76,9 +76,9 @@ Simulator instproc link-arq {wndsize apktsize ratek timeout limit from to vgseed
 	return $acker
 }
 
-proc print_stats {} {
+proc print_stats {err_rate ack_rate sim_time seed} {
 	global receiver
-	$receiver print-stats
+	$receiver print-stats $err_rate $ack_rate $sim_time $seed
 }
 
 #=== Create the Simulator, Nodes, and Links ===
@@ -141,6 +141,6 @@ $ns connect $udp $sink
 
 $ns at 0.0 "$cbr start"
 $ns at [lindex $argv 10] "$cbr stop"
-$ns at [expr {[lindex $argv 10] + 0.5}] print_stats
+$ns at [expr {[lindex $argv 10] + 0.5}] "print_stats [lindex $argv 5] [lindex $argv 6] [lindex $argv 10] [lindex $argv 11]"
 $ns at [expr {[lindex $argv 10] + 1.0}] "exit 0"
 $ns run

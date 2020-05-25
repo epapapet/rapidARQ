@@ -10,7 +10,6 @@ if {$arg_cnt != 12} {
     puts "# <burst_duration> : 0,..,1 -> the percentage of time that the channel is in an error burst state"
     puts "# <ack_rate> : the error rate in the return channel (error rate for ACKs)"
     puts "# <num_rtx> : the number of retransmissions allowed for a native pkt"
-    puts "# <rate_k> : the number of native pkts sent before creating a coded pkt (actually define the code rate)"
     puts "# <timeout> : the time for expiring an non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v"
     puts "# <simulation_time> : the simulation time in secs"
     puts "# <seed> : seed used to produce randomness"
@@ -77,9 +76,9 @@ Simulator instproc link-arq {wndsize apktsize timeout limit from to vgseed acker
 	return $acker
 }
 
-proc print_stats {} {
+proc print_stats {err_rate ack_rate sim_time seed} {
 	global receiver
-	$receiver print-stats
+	$receiver print-stats $err_rate $ack_rate $sim_time $seed
 }
 
 #=== Create the Simulator, Nodes, and Links ===
@@ -180,6 +179,6 @@ $ns connect $udp $sink
 
 $ns at 0.0 "$cbr start"
 $ns at [lindex $argv 10] "$cbr stop"
-$ns at [expr {[lindex $argv 10] + 0.5}] print_stats
+$ns at [expr {[lindex $argv 10] + 0.5}] "print_stats [lindex $argv 5] [lindex $argv 7] [lindex $argv 10] [lindex $argv 11]"
 $ns at [expr {[lindex $argv 10] + 1.0}] "exit 0"
 $ns run

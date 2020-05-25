@@ -24,7 +24,7 @@ TetrysTx set debug_ NULL
 TetrysAcker set debug_ NULL
 TetrysNacker set debug_ NULL
 
-SimpleLink instproc link-arq { wndsize apktsz ratekk ackperr timeperr vgseed ackerr } {
+SimpleLink instproc link-arq { wndsize apktsz ratekk ackperr timeoutt vgseed ackerr } {
     $self instvar link_ link_errmodule_ queue_ drophead_ head_
     $self instvar tARQ_ acker_ nacker_
  
@@ -33,30 +33,28 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk ackperr timeperr vgseed ack
     set nacker_ [new TetrysNacker]
 
     #Tx set up
-	$tARQ_ setup-wnd $wndsize $ratekk
     $tARQ_ set lnk_bw_ [$self bw]
     $tARQ_ set lnk_delay_ [$self delay]
     $tARQ_ set app_pkt_Size_ $apktsz
-    
+	$tARQ_ setup-wnd $wndsize $ratekk $timeoutt
 
+	set vagrngn2 [new RNG]
+    $vagrngn2 seed [expr {$vgseed + 1}]
+    set vagranvarn2 [new RandomVariable/Uniform]
+    $vagranvarn2 use-rng $vagrngn2
+    $tARQ_ ranvar $vagranvarn2
+    $tARQ_ set-err $ackerr 
+    
     #Acker set up
     $acker_ attach-TetrysTx $tARQ_
     $acker_ setup-TetrysNacker $nacker_
     $acker_ setup-wnd $wndsize
-    $acker_ update-delays $ackperr $timeperr
-    
-    set vagrngn2 [new RNG]
-    $vagrngn2 seed [expr {$vgseed + 1}]
-    set vagranvarn2 [new RandomVariable/Uniform]
-    $vagranvarn2 use-rng $vagrngn2
-    $acker_ ranvar $vagranvarn2
-    $acker_ set-err $ackerr    
-
+    $acker_ update-delays $ackperr
 
     #Nacker set up
     $nacker_ attach-TetrysTx $tARQ_
 	$nacker_ setup-TetrysAcker $acker_
-    $nacker_ update-delays $ackperr $timeperr
+    $nacker_ update-delays $ackperr
 
     
     #Connections between Tx, Acker, Nacker, queue, drop-target and Acker target
@@ -70,15 +68,15 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk ackperr timeperr vgseed ack
 	return $acker_
 }
 
-Simulator instproc link-arq {wndsize apktsize ratek ackper timeper from to vgseed ackerr} {
+Simulator instproc link-arq {wndsize apktsize ratek ackper timeout from to vgseed ackerr} {
     set link [$self link $from $to]
-    set acker [$link link-arq $wndsize $apktsize $ratek $ackper $timeper $vgseed $ackerr]
+    set acker [$link link-arq $wndsize $apktsize $ratek $ackper $timeout $vgseed $ackerr]
 	return $acker
 }
 
-proc print_stats {} {
+proc print_stats {err_rate ack_rate sim_time seed} {
 	global receiver
-	$receiver print-stats
+	$receiver print-stats $err_rate $ack_rate $sim_time $seed
 }
 
 #=== Create the Simulator, Nodes, and Links ===
@@ -146,6 +144,6 @@ $ns connect $udp $sink
 
 $ns at 0.0 "$cbr start"
 $ns at [lindex $argv 10] "$cbr stop"
-$ns at [expr {[lindex $argv 10] + 0.5}] print_stats
+$ns at [expr {[lindex $argv 10] + 0.5}] "print_stats [lindex $argv 5] [lindex $argv 6] [lindex $argv 10] [lindex $argv 11]"
 $ns at [expr {[lindex $argv 10] + 1.0}] "exit 0"
 $ns run
