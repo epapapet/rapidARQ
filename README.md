@@ -19,10 +19,10 @@ A simulation with C-ARQ can be executed by using the following syntax:
 
 where:
 
-* \<scriptfile\> : carq_cbr.tcl or carq_ftp.tcl
+* \<scriptfile\> : carq_cbr.tcl, carq_ftp.tcl
 * \<bandwidth\> : in bps, example: set to 5Mbps -> 5M or 5000000
 * \<propagation_delay\> : in secs, example: set to 30ms -> 30ms or 0.03
-* \<window_size\> : arq window size in pkts
+* \<window_size\> : arq window size in pkts (0 will automatically set <window_size\> to the optimal value for a error-free channel)
 * \<cbr_rate\> : the rate of the cbr applications, in bps, example: set to 3Mbps -> 3M or 3000000
 * \<pkt_size\> : the size of a UDP pkt (including UDP and IP headers) when UDP is used or the size of a TCP segment (not including the TCP and IP headers) when TCP is used 
 * \<err_rate\> : the error rate in the forward channel (error rate for frames)
@@ -35,7 +35,17 @@ where:
 * \<seed\> : seed used to produce randomness
 
 
-\<cbr_rate\> parameter is not available in case *carq_ftp.tcl* is executed. 
+\<cbr_rate\> parameter is not available in case *carq_ftp.tcl* is executed.
+
+One can also use:
+```
+./ns arq/carq_cbr_twostate.tcl <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <num_rtx> <rate_k> <coding_depth> <timeout> <simulation_time> <seed>
+```
+This script uses a two state on-off error model in the forward channel. One state corresponds to an error-free period while the other to a burst error period. The two extra arguments comnpared to the other scripts are:
+
+* \<err_rate\> : the error rate in the forward channel during the burst period
+* \<burst_duration> : the percentage of time that the channel is in a burst error period
+
 
 ### _Caterpillar-FB_
 
@@ -51,7 +61,7 @@ where:
 * \<scriptfile\> : caterpillar_cbr.tcl or caterpillar_ftp.tcl 
 * \<bandwidth\> : in bps, example: set to 5Mbps -> 5M or 5000000
 * \<propagation_delay\> : in secs, example: set to 30ms -> 30ms or 0.03
-* \<window_size\> : arq window size in pkts
+* \<window_size\> : arq window size in pkts (0 will automatically set <window_size\> to the optimal value for a error-free channel)
 * \<cbr_rate\> : the rate of the cbr applications, in bps, example: set to 3Mbps -> 3M or 3000000
 * \<pkt_size\> : the size of a UDP pkt (including UDP and IP headers) when UDP is used or the size of a TCP segment (not including the TCP and IP headers) when TCP is used
 * \<err_rate\> : the error rate in the forward channel (error rate for frames)
@@ -63,7 +73,16 @@ where:
 * \<seed\> : seed used to produce randomness
 
 
-\<cbr_rate\> parameter is not available in case *caterpillar_ftp.tcl* is executed. 
+\<cbr_rate\> parameter is not available in case *caterpillar_ftp.tcl* is executed.
+
+One can also use:
+```
+./ns arq/caterpillar_cbr_twostate.tcl <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <num_rtx> <rate_k> <timeout> <simulation_time> <seed>
+```
+This script uses a two state on-off error model in the forward channel. One state corresponds to an error-free period while the other to a burst error period. The two extra arguments comnpared to the other scripts are:
+
+* \<err_rate\> : the error rate in the forward channel during the burst period
+* \<burst_duration> : the percentage of time that the channel is in a burst error period
 
 ### _Tetrys_
 
@@ -78,7 +97,7 @@ where:
 * \<scriptfile\> : tetrys_cbr.tcl or tetrys_ftp.tcl 
 * \<bandwidth\> : in bps, example: set to 5Mbps -> 5M or 5000000
 * \<propagation_delay\> : in secs, example: set to 30ms -> 30ms or 0.03
-* \<window_size\> : arq window size in pkts
+* \<window_size\> : arq window size in pkts (0 will automatically set <window_size\> to the optimal value for a error-free channel)
 * \<cbr_rate\> : the rate of the cbr applications, in bps, example: set to 3Mbps -> 3M or 3000000
 * \<pkt_size\> : the size of a UDP pkt (including UDP and IP headers) when UDP is used or the size of a TCP segment (not including the TCP and IP headers) when TCP is used
 * \<err_rate\> : the error rate in the forward channel (error rate for frames)
@@ -91,6 +110,14 @@ where:
 
 \<cbr_rate\> parameter is not available in case *tetrys_ftp.tcl* is executed.
 
+One can also use:
+```
+./ns arq/caterpillar_cbr_twostate.tcl <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <rate_k> <ack_period> <timeout> <simulation_time> <seed>
+```
+This script uses a two state on-off error model in the forward channel. One state corresponds to an error-free period while the other to a burst error period. The two extra arguments comnpared to the other scripts are:
+
+* \<err_rate\> : the error rate in the forward channel during the burst period
+* \<burst_duration> : the percentage of time that the channel is in a burst error period
 
 ### _Selective Repeat_
 
@@ -106,7 +133,7 @@ where:
 * \<scriptfile\> : sr_cbr.tcl or sr_ftp.tcl 
 * \<bandwidth\> : in bps, example: set to 5Mbps -> 5M or 5000000
 * \<propagation_delay\> : in secs, example: set to 30ms -> 30ms or 0.03
-* \<window_size\> : arq window size in pkts
+* \<window_size\> : arq window size in pkts (0 will automatically set <window_size\> to the optimal value for a error-free channel)
 * \<cbr_rate\> : the rate of the cbr applications, in bps, example: set to 3Mbps -> 3M or 3000000
 * \<pkt_size\> : the size of a UDP pkt (including UDP and IP headers) when UDP is used or the size of a TCP segment (not including the TCP and IP headers) when TCP is used
 * \<err_rate\> : the error rate in the forward channel (error rate for frames)
@@ -117,4 +144,11 @@ where:
 * \<seed\> : seed used to produce randomness
 
 
-\<cbr_rate\> parameter is not available in case *sr_ftp.tcl* is executed. 
+One can also use:
+```
+./ns arq/sr_cbr_twostate.tcl <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <num_rtx> <timeout> <simulation_time> <seed>
+```
+This script uses a two state on-off error model in the forward channel. One state corresponds to an error-free period while the other to a burst error period. The two extra arguments comnpared to the other scripts are:
+
+* \<err_rate\> : the error rate in the forward channel during the burst period
+* \<burst_duration> : the percentage of time that the channel is in a burst error period
