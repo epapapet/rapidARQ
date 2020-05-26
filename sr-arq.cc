@@ -668,23 +668,30 @@ void SRARQAcker::deliver_frames(int steps, bool mindgaps, Handler *h)
 
 void SRARQAcker::print_parameters(double err, double ack, double sim_time, int seed)
 {
-  printf("Protocol:\t\t\tSelective Repeat\n");
-  printf("Bandwidth (Mbps):\t\t%.2f\n", 1.0e-6* arq_tx_->get_linkbw());
-	printf("Propagation delay (ms):\t\t%.2f\n", 1.0e3* arq_tx_->get_linkdelay());
-  printf("Window (pkts):\t\t\t%d\n", arq_tx_->get_wnd());
-  printf("Packet size (bytes):\t\t%d\n", arq_tx_->get_apppktsize());
+
+  printf("Protocol:"); printf("\033[0;32m"); printf("\t\t\tSelective Repeat\n"); printf("\033[0m");
+  printf("------------------------------------------------------\n");
+  printf("\033[0;34m");printf("Bandwidth (Mbps):");printf("\t\t%.2f\n", 1.0e-6 * arq_tx_->get_linkbw());
+	printf("Propagation delay (ms):"); printf("\t\t%.2f\n", 1.0e3 * arq_tx_->get_linkdelay());
+  double rtttimecor = 2*arq_tx_->get_linkdelay() + 8.0*(4.0 + arq_tx_->get_apppktsize())/arq_tx_->get_linkbw();
+  printf("RTT (ms):"); printf("\t\t\t%.2f\n", 1.0e3 * rtttimecor);
+  printf("Bandwidth-delay (kbits):"); printf("\t%.2f\n", 1.0e-3*arq_tx_->get_linkbw()*rtttimecor);
+  int totwind = arq_tx_->get_wnd();
+  printf("Window (pkts-%sBD-ms-kbits):","%"); printf("\t%d-", arq_tx_->get_wnd()); printf("\033[0;33m"); printf("%.0f%s-", 100.0*8.0*totwind*arq_tx_->get_apppktsize()/(2.0*arq_tx_->get_linkbw() * arq_tx_->get_linkdelay()),"%"); printf("\033[0;36m"); printf("%.2f-", 1.0e3 * 8.0*totwind*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw()); printf("\033[0;36m"); printf("%.0f\n", 1.0e-3*8.0*totwind*arq_tx_->get_apppktsize()); printf("\033[0m");
+  printf("\033[0;34m"); printf("Packet size (bytes):"); printf("\t\t%d\n", arq_tx_->get_apppktsize()); printf("\033[0m");
+  printf("\033[0;31m");
   if (err <= 1){
-    printf("Error rate (forward):\t\t%.2f\n", err);
+    printf("Error rate (forward):"); printf("\t\t%.2f\n", err);
   } else {
-    printf("Burst error rate (forward):\t%.2f\n", floor(err)/100.0);
-    printf("Burst duration percentage:\t%.2f\n", err-floor(err));
+    printf("Burst error rate (forward):");printf("\t%.2f\n", floor(err)/100.0);
+    printf("Burst duration percentage:");printf("\t%.2f\n", err-floor(err));
   }
-  printf("Error rate (backward):\t\t%.2f\n", ack);
-  printf("Retransmission limit:\t\t%d\n", arq_tx_->get_retry_limit());
-  printf("Timeout (ms):\t\t\t%.2f\n", 1.0e3 *arq_tx_->get_timeout());
-  printf("Simulation time (secs):\t\t%.2f\n", sim_time);
-  printf("Seed:\t\t\t\t%.d\n", seed);
-  printf("//-------------------------------------------------//\n");
+  printf("Error rate (backward):");printf("\t\t%.2f\n", ack);
+  printf("Retransmission limit:"); printf("\t\t%d\n", arq_tx_->get_retry_limit());
+  printf("Timeout (ms-%sRTT):","%");printf("\t\t%.2f-", 1.0e3 *arq_tx_->get_timeout());printf("%.0f%s\n", 100.0*arq_tx_->get_timeout()/rtttimecor,"%"); printf("\033[0m");
+  printf("\033[1;35m");printf("Simulation time (secs):\t\t%.2f\n", sim_time);
+  printf("Seed:\t\t\t\t%.d\n", seed);printf("\033[0m");
+  printf("------------------------------------------------------\n\n");
 } //end of print parameters
 
 void SRARQAcker::print_stats(double err, double ack, double sim_time, int seed)
@@ -730,6 +737,7 @@ void SRARQAcker::print_stats(double err, double ack, double sim_time, int seed)
   fseek(fp, 0, SEEK_END);
   if(ftell(fp) == 0) {
       char* header =  "bandwidth  propagation_delay window_size cbr_rate  pkt_size  err_rate  ack_rate  num_rtx timeout simulation_time seed  Start time (sec) Finish time (sec) Total number of delivered pkts  Delivered data (in mega bytes)  Total throughput (Mbps) Total pause time (secs) Unique packets sent  Mean delay (msec) Maximum delay (msec)  Minimum delay (msec)  Mean delay jitter (msec)  Avg num of retransmissions  Packet loss rate";
+      //char* header =  "SimID bandwidth  propagation_delay window_size cbr_rate  pkt_size  err_rate  ack_rate  num_rtx timeout simulation_time seed  Start time (sec) Finish time (sec) Total number of delivered pkts  Delivered data (in mega bytes)  Total throughput (Mbps) Total pause time (secs) Unique packets sent  Mean delay (msec) Maximum delay (msec)  Minimum delay (msec)  Mean delay jitter (msec)  Avg num of retransmissions  Packet loss rate";
     fprintf(fp, "%s\n", header);
     //cntLines = 1;
   } /*else {
