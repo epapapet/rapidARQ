@@ -727,6 +727,10 @@ int CaterpillarAcker::command(int argc, const char*const* argv)
 			return(TCL_OK);
 		}
 	} else if (argc == 6) {
+    if (strcmp(argv[1], "print-parameters") == 0) {
+      print_parameters(atof(argv[2]), atof(argv[3]), atof(argv[4]), atoi(argv[5]));
+      return(TCL_OK);
+    }
     if (strcmp(argv[1], "print-stats") == 0) {
 			print_stats(atof(argv[2]), atof(argv[3]), atof(argv[4]), atoi(argv[5])); //used for collecting statistics, along with the corresponding tcl command
 			return(TCL_OK);
@@ -875,6 +879,30 @@ void CaterpillarAcker::deliver_frames(int steps, bool mindgaps, Handler *h)
 	}
 
 }// end of deliver_frames
+
+
+void CaterpillarAcker::print_parameters(double err, double ack, double sim_time, int seed)
+{
+  printf("Protocol:\t\t\tCaterpillar-FB\n");
+  printf("Bandwidth (Mbps):\t\t%.2f\n", 1.0e-6* arq_tx_->get_linkbw());
+	printf("Propagation delay (ms):\t\t%.2f\n", 1.0e3* arq_tx_->get_linkdelay());
+  printf("Window (pkts):\t\t\t%d\n", arq_tx_->get_wnd());
+  printf("Packet size (bytes):\t\t%d\n", arq_tx_->get_apppktsize());
+  if (err <= 1){
+    printf("Error rate (forward):\t\t%.2f\n", err);
+  } else {
+    printf("Burst error rate (forward):\t%.2f\n", floor(err)/100.0);
+    printf("Burst duration percentage:\t%.2f\n", err-floor(err));
+  }
+  printf("Error rate (backward):\t\t%.2f\n", ack);
+  printf("Retransmission limit:\t\t%d\n", arq_tx_->get_retry_limit());
+  printf("Coding cycle size:\t\t%d\n", arq_tx_->get_ratek());
+  printf("Timeout (ms):\t\t\t%.2f\n", 1.0e3 *arq_tx_->get_timeout());
+  printf("Simulation time (secs):\t\t%.2f\n", sim_time);
+  printf("Seed:\t\t\t\t%.d\n", seed);
+  printf("//-------------------------------------------------//\n");
+} //end of print parameters
+
 
 void CaterpillarAcker::print_stats(double err, double ack, double sim_time, int seed)
 {

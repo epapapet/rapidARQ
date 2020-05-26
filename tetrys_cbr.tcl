@@ -142,6 +142,7 @@ $ns attach-agent $n3 $sink
 $cbr attach-agent $udp
 $ns connect $udp $sink
 
+$ns at 0.0 "$receiver print-parameters [lindex $argv 5] [lindex $argv 6] [lindex $argv 10] [lindex $argv 11]"
 $ns at 0.0 "$cbr start"
 $ns at [lindex $argv 10] "$cbr stop"
 $ns at [expr {[lindex $argv 10] + 0.5}] "print_stats [lindex $argv 5] [lindex $argv 6] [lindex $argv 10] [lindex $argv 11]"

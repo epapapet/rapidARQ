@@ -777,6 +777,10 @@ int CARQAcker::command(int argc, const char*const* argv)
 			return(TCL_OK);
 		}
 	} else if (argc == 6) {
+    if (strcmp(argv[1], "print-parameters") == 0) {
+      print_parameters(atof(argv[2]), atof(argv[3]), atof(argv[4]), atoi(argv[5]));
+      return(TCL_OK);
+    }
 		if (strcmp(argv[1], "print-stats") == 0) {
 			print_stats(atof(argv[2]), atof(argv[3]), atof(argv[4]), atoi(argv[5])); //used for collecting statistics, along with the corresponding tcl command
 			return(TCL_OK);
@@ -928,6 +932,30 @@ void CARQAcker::deliver_frames(int steps, bool mindgaps, Handler *h)
 
 }// end of deliver_frames
 
+void CARQAcker::print_parameters(double err, double ack, double sim_time, int seed)
+{
+  printf("Protocol:\t\t\tC-ARQ\n");
+  printf("Bandwidth (Mbps):\t\t%.2f\n", 1.0e-6* arq_tx_->get_linkbw());
+	printf("Propagation delay (ms):\t\t%.2f\n", 1.0e3 * arq_tx_->get_linkdelay());
+  printf("Window (pkts):\t\t\t%d\n", arq_tx_->get_wnd());
+  printf("Packet size (bytes):\t\t%d\n", arq_tx_->get_apppktsize());
+  if (err <= 1){
+    printf("Error rate (forward):\t\t%.2f\n", err);
+  } else {
+    printf("Burst error rate (forward):\t%.2f\n", floor(err)/100.0);
+    printf("Burst duration percentage:\t%.2f\n", err-floor(err));
+  }
+  printf("Error rate (backward):\t\t%.2f\n", ack);
+  printf("Retransmission limit:\t\t%d\n", arq_tx_->get_retry_limit());
+  printf("Coding cycle size:\t\t%d\n", arq_tx_->get_ratek());
+  printf("Codign depth:\t\t\t%d\n", arq_tx_->get_coding_depth());
+  printf("Timeout (ms):\t\t\t%.2f\n", 1.0e3 *arq_tx_->get_timeout());
+  printf("Simulation time (secs):\t\t%.2f\n", sim_time);
+  printf("Seed:\t\t\t\t%.d\n", seed);
+  printf("//-------------------------------------------------//\n");
+} //end of print parameters
+
+
 void CARQAcker::print_stats(double err, double ack, double sim_time, int seed)
 {
   printf("\n//------------ STATS FOR C-ARQ --------------//\n");
@@ -995,7 +1023,7 @@ void CARQAcker::print_stats(double err, double ack, double sim_time, int seed)
     cntLines = (int)strtoull(numLines, NULL, 10);
   }
   fprintf(fp, "%d %.0f %.3f  %d  %.0f  %d  %.3f  %.3f  %d  %d  %d  %.3f  %.0f  %d  %f %f  %.0f  %.3f  %f  %f  %.0f  %.0f  %f  %f  %f  %f  %f  %f  %.0f  %f  %f  %0.f  %f  %0.f  %f  %0.f\n", cntLines, arq_tx_->get_linkbw(), arq_tx_->get_linkdelay(), wnd_, arq_tx_->get_linkbw(), arq_tx_->get_apppktsize(), err, ack, arq_tx_->get_retry_limit(), arq_tx_->get_ratek(), arq_tx_->get_coding_depth(), arq_tx_->get_timeout(), sim_time, seed, arq_tx_->get_start_time(), finish_time, delivered_pkts, delivered_data/1048576, throughput * 1.0e-6, arq_tx_->get_total_pause_time(), arq_tx_->get_total_packets_sent(), arq_tx_->get_total_coded_packets_sent(), mean * 1.0e+3, max_delay * 1.0e+3, min_delay * 1.0e+3, meanjitter * 1.0e+3, avg_rtxs, packet_loss_rate, num_of_decodings, avg_num_of_decoded_pkts, average_dec_matrix_size, max_dec_matrix_size, average_inv_known_pkts_size, max_inv_known_pkts_size, average_known_pkts_size, max_known_pkts_size);*/
-  fprintf(fp, "%.0f %.3f  %d  %.0f  %d  %.3f  %.3f  %d  %d  %d  %.3f  %.0f  %d  %f %f  %.0f  %.3f  %f  %f  %.0f  %.0f  %f  %f  %f  %f  %f  %f  %.0f  %f  %f  %0.f  %f  %0.f  %f  %0.f\n", arq_tx_->get_linkbw(), arq_tx_->get_linkdelay(), wnd_, arq_tx_->get_linkbw(), arq_tx_->get_apppktsize(), err, ack, arq_tx_->get_retry_limit(), arq_tx_->get_ratek(), arq_tx_->get_coding_depth(), arq_tx_->get_timeout(), sim_time, seed, arq_tx_->get_start_time(), finish_time, delivered_pkts, delivered_data/1048576, throughput * 1.0e-6, arq_tx_->get_total_pause_time(), arq_tx_->get_total_packets_sent(), arq_tx_->get_total_coded_packets_sent(), mean * 1.0e+3, max_delay * 1.0e+3, min_delay * 1.0e+3, meanjitter * 1.0e+3, avg_rtxs, packet_loss_rate, num_of_decodings, avg_num_of_decoded_pkts, average_dec_matrix_size, max_dec_matrix_size, average_inv_known_pkts_size, max_inv_known_pkts_size, average_known_pkts_size, max_known_pkts_size);  
+  fprintf(fp, "%.0f %.3f  %d  %.0f  %d  %.3f  %.3f  %d  %d  %d  %.3f  %.0f  %d  %f %f  %.0f  %.3f  %f  %f  %.0f  %.0f  %f  %f  %f  %f  %f  %f  %.0f  %f  %f  %0.f  %f  %0.f  %f  %0.f\n", arq_tx_->get_linkbw(), arq_tx_->get_linkdelay(), wnd_, arq_tx_->get_linkbw(), arq_tx_->get_apppktsize(), err, ack, arq_tx_->get_retry_limit(), arq_tx_->get_ratek(), arq_tx_->get_coding_depth(), arq_tx_->get_timeout(), sim_time, seed, arq_tx_->get_start_time(), finish_time, delivered_pkts, delivered_data/1048576, throughput * 1.0e-6, arq_tx_->get_total_pause_time(), arq_tx_->get_total_packets_sent(), arq_tx_->get_total_coded_packets_sent(), mean * 1.0e+3, max_delay * 1.0e+3, min_delay * 1.0e+3, meanjitter * 1.0e+3, avg_rtxs, packet_loss_rate, num_of_decodings, avg_num_of_decoded_pkts, average_dec_matrix_size, max_dec_matrix_size, average_inv_known_pkts_size, max_inv_known_pkts_size, average_known_pkts_size, max_known_pkts_size);
   fclose(fp);
 } //end of print_stats
 

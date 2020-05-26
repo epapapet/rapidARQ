@@ -137,6 +137,7 @@ $ns attach-agent $n3 $sink
 $ftp attach-agent $tcp
 $ns connect $tcp $sink
 
+$ns at 0.0 "$receiver print-parameters [lindex $argv 4] [lindex $argv 5] [lindex $argv 8] [lindex $argv 9]"
 $ns at 0.0 "$ftp start"
 $ns at [lindex $argv 8] "$ftp stop"
 $ns at [expr {[lindex $argv 8] + 0.51}] show_tcp_seqno

@@ -124,6 +124,7 @@ public:
 	void recv(Packet*, Handler*);
 	int command(int argc, const char*const* argv);
 	void print_stats(double err, double ack, double sim_time, int seed);
+  void print_parameters(double err, double ack, double sim_time, int seed);
 	void log_lost_pkt(Packet *p);
   virtual void handle(Event* e);
  protected:
