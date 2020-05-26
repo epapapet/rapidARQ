@@ -90,11 +90,14 @@ int SRARQTx::command(int argc, const char*const* argv)
 		}
   } else if (argc == 4) {
 		if (strcmp(argv[1], "setup-wnd") == 0) {
-			if (*argv[2] == '0') {
-				tcl.resultf("Cannot setup NULL wnd\n");
+      wnd_ = atoi(argv[2]);
+      if (wnd_ < 0) {
+				tcl.resultf("Cannot setup a negative wnd\n");
 				return(TCL_ERROR);
 			}
-			wnd_ = atoi(argv[2]);
+      if (wnd_ == 0){
+        wnd_ = ceil( ((2.0 * lnk_delay_ * lnk_bw_)/(double)(8.0*app_pkt_Size_) +  1) );
+      }
 			sn_cnt = 4 * wnd_; //although 2*wnd_ is enough, we use 4*wnd_ or more to tackle the case that SRARQTx drops packets and advances its window without SRARQRx knowing
 			pkt_buf = new Packet* [wnd_]; //buffer for storing pending frames
 			status = new SRARQARQStatus[wnd_]; //the status for each frame: IDLE,SENT,ACKED,RTX,RTXPRE,DROP
@@ -519,11 +522,14 @@ int SRARQAcker::command(int argc, const char*const* argv)
 	Tcl& tcl = Tcl::instance();
 	if (argc == 3) {
 		if (strcmp(argv[1], "setup-wnd") == 0) {
-			if (*argv[2] == '0') {
-				tcl.resultf("Cannot setup NULL wnd\n");
+      wnd_ = atoi(argv[2]);
+      if (wnd_ < 0) {
+				tcl.resultf("Cannot setup a negative wnd\n");
 				return(TCL_ERROR);
 			}
-			wnd_ = atoi(argv[2]);
+      if (wnd_ == 0){
+        wnd_ = ceil( ((2.0 * arq_tx_->get_linkdelay() * arq_tx_->get_linkbw())/(double)(8.0*arq_tx_->get_apppktsize()) +  1) );
+      }
 			sn_cnt = 4 * wnd_; //never less than 2*wnd_ but usually more than that (see note in SRARQTx command)
 			pkt_buf = new Packet* [wnd_]; //buffer for storing out-of-order received frames
 			status = new SRARQPacketStatus[wnd_]; //the status of each pending frame: NONE,MISSING,RECEIVED
@@ -696,7 +702,7 @@ void SRARQAcker::print_parameters(double err, double ack, double sim_time, int s
 
 void SRARQAcker::print_stats(double err, double ack, double sim_time, int seed)
 {
-  printf("\n//------------ STATS FOR SRARQ --------------//\n");
+  printf("\n------------------ STATS FOR SRARQ -------------------\n");
 	printf("Start time (sec):\t\t\t%f\n", arq_tx_->get_start_time());
 	printf("Finish time (sec):\t\t\t%f\n", finish_time);
 
@@ -718,7 +724,7 @@ void SRARQAcker::print_stats(double err, double ack, double sim_time, int seed)
 	printf("Avg num of retransmissions:\t\t%f\n", avg_rtxs);
   double packet_loss_rate = 1 - (delivered_pkts / arq_tx_->get_total_packets_sent());
   printf("Packet loss rate:\t\t\t%f\n", packet_loss_rate);
-  printf("//-------------------------------------------------//\n");
+  printf("------------------------------------------------------\n");
 
   //Append statistics if file exists, otherwise create new file and insert headers as well
   if(access("arq/results", F_OK) != 0)

@@ -97,11 +97,15 @@ int CARQTx::command(int argc, const char*const* argv)
 		}
   } else if (argc == 6) {
 		if (strcmp(argv[1], "setup-wnd") == 0) {
-			if (*argv[2] == '0') {
-				tcl.resultf("Cannot setup NULL wnd\n");
+      wnd_ = atoi(argv[2]);
+      if (wnd_ < 0) {
+				tcl.resultf("Cannot setup a negative wnd\n");
 				return(TCL_ERROR);
 			}
-			wnd_ = atoi(argv[2]);
+      if (wnd_ == 0){
+        int crounds = ceil( ((2.0 * lnk_delay_ * lnk_bw_)/(double)(8.0*app_pkt_Size_) +  2) * (1.0/(double)(1+atoi(argv[3]))) );
+        wnd_ = crounds * atoi(argv[3]);
+      }
 			sn_cnt = 4 * wnd_; //although 2*wnd_ is enough, we use 4*wnd_ or more to tackle the case that CARQTx drops packets and advances its window without CARQRx knowing
 			pkt_buf = new Packet* [wnd_]; //buffer for storing pending frames
 			status = new CARQStatus[wnd_]; //the status for each frame: IDLE,SENT,ACKED,RTX,RTXPRE,DROP
@@ -755,11 +759,15 @@ int CARQAcker::command(int argc, const char*const* argv)
 	Tcl& tcl = Tcl::instance();
 	if (argc == 3) {
 		if (strcmp(argv[1], "setup-wnd") == 0) {
-			if (*argv[2] == '0') {
-				tcl.resultf("Cannot setup NULL wnd\n");
+      wnd_ = atoi(argv[2]);
+      if (wnd_ < 0) {
+				tcl.resultf("Cannot setup a negative wnd\n");
 				return(TCL_ERROR);
 			}
-			wnd_ = atoi(argv[2]);
+      if (wnd_ == 0){
+        int crounds = ceil( ((2.0 * arq_tx_->get_linkdelay() * arq_tx_->get_linkbw())/(double)(8.0*arq_tx_->get_apppktsize()) +  2) * (1.0/(double)(1+arq_tx_->get_ratek())) );
+        wnd_ = crounds * arq_tx_->get_ratek();
+      }
 			sn_cnt = 4 * wnd_; //never less than 2*wnd_ but usually more than that (see note in CARQTx command)
 			pkt_buf = new Packet* [wnd_]; //buffer for storing out-of-order received frames
 			lost_pkt_buf = new Packet* [sn_cnt]; //buffer for storing lost frames, used to find a frame if the frame is decoded (this is used as a hack)
