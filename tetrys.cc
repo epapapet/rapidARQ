@@ -616,6 +616,7 @@ void TetrysAcker::recv(Packet* p, Handler* h)
 			status[nxt_seq%wnd_] = NONE;
 			if (pkt_buf[nxt_seq%wnd_]){ fprintf(stderr, "Error at TetrysRx::recv, position of in order frame found non empty.\n"); abort(); }
 			pkt_buf[nxt_seq%wnd_] = NULL;
+      if (lost_pkt_buf[nxt_seq]) Packet::free(lost_pkt_buf[nxt_seq]);
 			lost_pkt_buf[nxt_seq] = NULL;
 
 			finish_time = Scheduler::instance().clock();
@@ -637,6 +638,7 @@ void TetrysAcker::recv(Packet* p, Handler* h)
 				status[seq_num%wnd_] = RECEIVED;
 				if (pkt_buf[seq_num%wnd_]){ fprintf(stderr, "Error at TetrysRx::recv, position of not received and not decoded frame within forward window found non empty.\n"); abort(); }
 				pkt_buf[seq_num%wnd_] = p;
+        if (lost_pkt_buf[seq_num]) Packet::free(lost_pkt_buf[seq_num]);
 				lost_pkt_buf[seq_num] = NULL;
 			} else { //the frame has already been received, thus the ACK was lost and nothing needs to be done beyond ACKing the frame and deleting the newly received
 				//Sanity-------------------------//
@@ -665,6 +667,7 @@ void TetrysAcker::recv(Packet* p, Handler* h)
 		status[seq_num%wnd_] = RECEIVED;
 		if (pkt_buf[seq_num%wnd_]){ fprintf(stderr, "Error at TetrysRx::recv, position of new frame beyond most recent found non empty.\n"); abort(); }
 		pkt_buf[seq_num%wnd_] = p;
+    if (lost_pkt_buf[seq_num]) Packet::free(lost_pkt_buf[seq_num]);
 		lost_pkt_buf[seq_num] = NULL;
 		deliver_frames(wnd_, true, h); //check if it is possible to deliver in order frames
 		for (int i = (most_recent_acked + 1)%sn_cnt; i != seq_num; i = (i + 1)%sn_cnt){ status[i%wnd_] = MISSING; } //update positions between most_recent_acked and the new sequence number with MISSING state
