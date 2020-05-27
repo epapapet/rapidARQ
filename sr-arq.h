@@ -143,7 +143,8 @@ public:
   double last_delay_sample; //the last delay, used to calculate delay jitter
 
 	void deliver_frames(int steps, bool mindgaps, Handler *h);
-
+ private:
+  char* filename; //file where results will be stored
 };
 
 class SRARQNacker : public SRARQRx {
