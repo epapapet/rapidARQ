@@ -180,11 +180,9 @@ public:
 
 	void deliver_frames(int steps, bool mindgaps, Handler *h);
   void clean_decoding_matrix(int from, int to);
-  //void clean_known_packets(int from, int to);
-  void delete_lost_and_associated_coded_from_matrix(int pkt_to_remove);
-  void delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove);
-  void delete_known_from_matrix(int pkt_to_remove);
-  void delete_known_from_matrix_strict(int pkt_to_remove);
+  void delete_lost_and_affected_coded(set<int> packets_to_remove);
+  bool delete_lost_and_find_affected_coded(int pkt_to_remove);
+  void delete_known_and_affected_coded_and_lost(set<int> packets_to_remove);
   void repopulate_seen_packets();
 
  private:

@@ -770,6 +770,7 @@ void CaterpillarAcker::recv(Packet* p, Handler* h)
 
 	bool should_check_for_decoding = true; //bool to indicate whether the new reception should trigger a decoding
   bool decoding_occured = false; //bool to check if the new arrival created a decoding
+  bool received_pkt_and_deleted_lost = false; //bool used to check if a received pkt is an old lost so repopulate_seen_packets() should be executed
 
 	if (within_fww){//frame belongs to the forward window
 
@@ -840,8 +841,8 @@ void CaterpillarAcker::recv(Packet* p, Handler* h)
   if (should_check_for_decoding){ //check if decoding is now possible due to the reception of the new pkt (if it is a retransmitted one)
     involved_known_packets.insert(seq_num); //add newly received pkt
     known_packets.insert(seq_num); //add newly received pkt
-    delete_lost_and_find_associated_coded_in_matrix(seq_num); //delete received pkt from lost and delete coded pkts containing only this lost
-    repopulate_seen_packets(); //a change in the decoding matrix has occured so recalculate seen packets
+    received_pkt_and_deleted_lost = delete_lost_and_find_affected_coded(seq_num); //delete received pkt from lost and delete coded pkts containing only this lost
+    if (received_pkt_and_deleted_lost) repopulate_seen_packets(); //a change in the decoding matrix has occured so recalculate seen packets
     decoding_occured = decode(h, false); //Check if decoding is now possible
   }
 
@@ -998,7 +999,7 @@ void CaterpillarAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function t
 
   set<int> intersect;
   set<int> known_intersect;
-  set<int> unionset;
+  vector<int> unionset;
   set<int> old_lost_packets = lost_packets; //keep a copy of lost_packets before adding new ones
   lost_packets.clear();
   set<int> coded_pkt_contents; //used to store the contents of the coded pkt for short term
@@ -1071,8 +1072,11 @@ void CaterpillarAcker:: parse_coded_packet(Packet *cp, Handler* h){ //function t
 
   if (lost_packets.size() != 0) { //at least one lost pkt is contained in the coded packet so store it
 
-    set_union(lost_packets.begin(),lost_packets.end(),old_lost_packets.begin(),old_lost_packets.end(), std::inserter(unionset,unionset.begin())); //take the union between coded_pkt_contents and lost_packets
-    lost_packets = unionset; unionset.clear(); old_lost_packets.clear();
+    vector<int>temp_vect1(lost_packets.begin(),lost_packets.end());
+    vector<int>temp_vect2(old_lost_packets.begin(),old_lost_packets.end());
+    set_union(temp_vect1.begin(),temp_vect1.end(),temp_vect2.begin(),temp_vect2.end(), std::inserter(unionset,unionset.begin())); //take the union between coded_pkt_contents and lost_packets
+    set<int>temp_set1(unionset.begin(),unionset.end());
+    lost_packets = temp_set1; temp_set1.clear(); unionset.clear(); old_lost_packets.clear();
     //set<int>::iterator mmiter;
     //printf("parse, adding coded pkt. "); printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = involved_known_packets.begin(); mmiter != involved_known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n");
     coded_packets.push_back(coded_pkt_contents_vector); //store new coded pkt
@@ -1252,16 +1256,29 @@ Packet* CaterpillarAcker::create_coded_ack(){
 
 void CaterpillarAcker::clean_decoding_matrix(int from, int to)
 {
+  set<int> deleted_lost_pkts;
+  set<int> deleted_known_pkts;
+  int deleted_one_lost = 0;
+  int deleted_one_known = 0;
   int runner_ = from;
 	do {
-		delete_known_from_matrix_strict(runner_); //delete known pkt only if it is not contained in any stored coded one
-    delete_lost_and_associated_coded_from_matrix(runner_); //delete lost pkt and also all coded containing this packet
-    repopulate_seen_packets(); //a change in decoding matrix has occured, so recalculater seen packets
+    known_packets.erase(runner_);
+    deleted_one_known = involved_known_packets.erase(runner_);
+    if (deleted_one_known > 0) deleted_known_pkts.insert(runner_);
+
+    deleted_one_lost = lost_packets.erase(runner_);
+    if (deleted_one_lost > 0) deleted_lost_pkts.insert(runner_);
+
 		runner_ = (runner_ + 1)%sn_cnt;
 	} while (runner_ != to);
+  if (deleted_known_pkts.size() != 0) delete_known_and_affected_coded_and_lost(deleted_known_pkts);
+  if (deleted_lost_pkts.size() != 0) delete_lost_and_affected_coded(deleted_lost_pkts);
+  if ((deleted_known_pkts.size() != 0) || (deleted_lost_pkts.size() != 0)) repopulate_seen_packets();
+
 } //end of clean_decoding_matrix
 
-void CaterpillarAcker::delete_lost_and_associated_coded_from_matrix(int pkt_to_remove)
+
+void CaterpillarAcker::delete_lost_and_affected_coded(set<int> packets_to_remove)
 {
   //Should delete a lost_packet that is now out of the sender's coding window, so no more subsequent coded pkts will contain it
   //In doing so we also need to delete all coded pkts containing the deleted lost pkt because they will no be usefull for decodings
@@ -1270,34 +1287,40 @@ void CaterpillarAcker::delete_lost_and_associated_coded_from_matrix(int pkt_to_r
   vector<vector<int> >::iterator itcodedpkts;
   vector<vector<int> > temp_coded;
   set<int>::iterator mmiter;
-  set<int> intersect;
+  vector<int> intersect;
+  vector<int> intersect_sanity;
+  vector<int>::iterator duplit;
 
-  int deleted_lost_pkt = lost_packets.erase(pkt_to_remove);
-  if (deleted_lost_pkt > 0){
-    //printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = involved_known_packets.begin(); mmiter != involved_known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Num of coded pkts = %d. Lost pkt deleted is %d.\n", (int)coded_packets.size(), pkt_to_remove);
-    for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
-        //printf("Coded pkt: "); for (mmiter = (*itcodedpkts).begin(); mmiter != (*itcodedpkts).end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf(".\n");
-        set<int> temp_set((*itcodedpkts).begin(), (*itcodedpkts).end());
-        int erase_coded_cnt = temp_set.count(pkt_to_remove); //if deleted lost is in coded pkt erase_coded_cnt > 0
-        if (erase_coded_cnt > 0){ //coded pkt contains the deleted lost one
-          //printf("Coded pkt is deleted.\n");
-        } else { // this only serves as a diagnostic: every other coded pkt should contain at least one lost packet
-          set_intersection(lost_packets.begin(),lost_packets.end(),temp_set.begin(),temp_set.end(), std::inserter(intersect,intersect.begin()));
-          if (intersect.size() == 0) {fprintf(stderr, "Error at CaterpillarRx::delete_lost_and_associated_coded_from_matrix, found coded pkt that does contain any lost pkt.\n"); abort();}
-          intersect.clear();
-          temp_coded.push_back((*itcodedpkts));
-        }
-        temp_set.clear();
-    } // done cleaning coded_pkts
-    coded_packets.clear();
-    coded_packets = temp_coded;
-    temp_coded.clear();
-    //printf("The remaining coded_pkts are %d.\n", (int)coded_packets.size());
-  } //done with this deleted lost packet
-} //end of delete_lost_and_associated_coded_from_matrix
+  //printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = involved_known_packets.begin(); mmiter != involved_known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Num of coded pkts = %d. Lost pkt deleted is %d.\n", (int)coded_packets.size(), pkt_to_remove);
+  for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
+    //printf("Coded pkt: "); for (mmiter = (*itcodedpkts).begin(); mmiter != (*itcodedpkts).end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf(".\n");
+    vector<int> temp_vect(packets_to_remove.begin(),packets_to_remove.end());
+    set_intersection(temp_vect.begin(),temp_vect.end(),(*itcodedpkts).begin(),(*itcodedpkts).end(), std::inserter(intersect,intersect.begin()));
+    if (intersect.size() != 0){ //if at least one deleted lost pkt is contained in the coded one
+      //printf("Coded pkt is deleted.\n");
+    } else {
+      // the intersection only serves as a diagnostic: every other coded pkt should contain at least one lost packet
+      //vector<int> temp_lost_sanity(lost_packets.begin(), lost_packets.end());
+      //set_intersection(temp_lost_sanity.begin(),temp_lost_sanity.end(),(*itcodedpkts).begin(),(*itcodedpkts).end(), std::inserter(intersect_sanity,intersect_sanity.begin()));
+      //duplit = unique (intersect_sanity.begin(), intersect_sanity.end());
+      //intersect_sanity.resize(distance(intersect_sanity.begin(),duplit));
+      //if (intersect_sanity.size() == 0) {fprintf(stderr, "Error at CaterpillarRx::delete_lost_and_affected_coded, found coded pkt that does not contain any lost pkt.\n"); abort();}
+      //intersect_sanity.clear();
+
+      temp_coded.push_back((*itcodedpkts));
+    }
+    intersect.clear();
+    temp_vect.clear();
+  } // done cleaning coded_pkts
+  coded_packets.clear();
+  coded_packets = temp_coded;
+  temp_coded.clear();
+  //printf("The remaining coded_pkts are %d.\n", (int)coded_packets.size());
+
+} //end of delete_lost_and_affected_coded
 
 
-void CaterpillarAcker::delete_lost_and_find_associated_coded_in_matrix(int pkt_to_remove)
+bool CaterpillarAcker::delete_lost_and_find_affected_coded(int pkt_to_remove)
 {
   //Should delete a lost_packet that turned into known (through a retransmission)
   //In doing so we also need to delete all coded pkts containing only this lost_packet because they are no more usefull in decodings
@@ -1306,17 +1329,18 @@ void CaterpillarAcker::delete_lost_and_find_associated_coded_in_matrix(int pkt_t
   vector<vector<int> >::iterator itcodedpkts;
   vector<vector<int> > temp_coded;
   set<int>::iterator mmiter;
-  set<int> intersect;
+  vector<int> intersect;
 
   int deleted_lost_pkt = lost_packets.erase(pkt_to_remove);
   if (deleted_lost_pkt > 0){
     //printf("Lost pkts are:"); for (mmiter = lost_packets.begin(); mmiter != lost_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Known pkts are:"); for (mmiter = involved_known_packets.begin(); mmiter != involved_known_packets.end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf("\n"); printf("Num of coded pkts = %d. Lost pkt deleted is %d.\n", (int)coded_packets.size(), pkt_to_remove);
     for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
         //printf("Coded pkt: "); for (mmiter = (*itcodedpkts).begin(); mmiter != (*itcodedpkts).end(); ++mmiter ){ printf(" %d", *(mmiter)); } printf(".\n");
-        set<int> temp_set((*itcodedpkts).begin(), (*itcodedpkts).end());
+        vector<int>temp_vect(lost_packets.begin(),lost_packets.end());
+        set<int>temp_set((*itcodedpkts).begin(),(*itcodedpkts).end());
         int exists_in_coded_cnt = temp_set.count(pkt_to_remove); //if deleted lost is in coded pkt exists_in_coded_cnt > 0
         if (exists_in_coded_cnt != 0){ //coded pkt contains the lost pkt turned to known, so check if coded contains at least one other lost
-          set_intersection(lost_packets.begin(),lost_packets.end(),temp_set.begin(),temp_set.end(), std::inserter(intersect,intersect.begin()));
+          set_intersection(temp_vect.begin(),temp_vect.end(),(*itcodedpkts).begin(),(*itcodedpkts).end(), std::inserter(intersect,intersect.begin()));
           if (intersect.size() == 0) { //coded pkt does not contain at least one other lost pkt
             //printf("Coded pkt is deleted.\n");
           } else { //coded pkt contains at least one other lost pkt
@@ -1326,82 +1350,85 @@ void CaterpillarAcker::delete_lost_and_find_associated_coded_in_matrix(int pkt_t
         } else { //coded pkt does not contain the deleted lost pkt
           temp_coded.push_back((*itcodedpkts));
         }
+        temp_vect.clear();
         temp_set.clear();
     } // done cleaning coded_pkts
     coded_packets.clear();
     coded_packets = temp_coded;
     temp_coded.clear();
     //printf("The remaining coded_pkts are %d.\n", (int)coded_packets.size());
+    return true;
   } //done with this deleted lost packet
-} //end of delete_lost_and_find_associated_coded_in_matrix
+  return false;
+} //end of delete_lost_and_find_affected_coded
 
-void CaterpillarAcker::delete_known_from_matrix(int pkt_to_remove){
-  //Should delete a known_packet that is now out of the sender's coding window, so no more subsequent coded pkts will contain it
-  //The deletion will take place only if this packet is not involved in a stored coded packet, in which case it is needed for decoding
-  vector<vector<int> >::iterator itcodedpkts;
-  known_packets.erase(pkt_to_remove);
-  int should_delete = 0;
-  for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
-    set<int> temp_set((*itcodedpkts).begin(), (*itcodedpkts).end());
-    should_delete = temp_set.count(pkt_to_remove);
-    temp_set.clear();
-    if (should_delete > 0) return;
-  }
-  involved_known_packets.erase(pkt_to_remove);
-} //end of delete_known_from_matrix
-
-void CaterpillarAcker::delete_known_from_matrix_strict(int pkt_to_remove){
+void CaterpillarAcker::delete_known_and_affected_coded_and_lost(set<int> packets_to_remove){
   //Should delete a known_packet that is now out of the sender's coding window
   //Should also delete affected coded packets as well as lost ones
   vector<vector<int> >::iterator itcodedpkts;
   vector<vector<int> > temp_coded;
-  set <int> affected_pkts;
-  set <int> not_affected_pkts;
-  set <int> helper;
-  set <int> ::iterator iterhelper;
+  vector <int> affected_pkts;
+  vector <int> not_affected_pkts;
+  vector <int> helper;
+  vector <int> ::iterator iterhelper;
+  vector <int> intersect;
 
-  known_packets.erase(pkt_to_remove);
-  int erased_one = involved_known_packets.erase(pkt_to_remove);
-  if (erased_one){
-    for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
-      set<int> temp_set((*itcodedpkts).begin(), (*itcodedpkts).end());
-      if (temp_set.count(pkt_to_remove)){
-        set_union(affected_pkts.begin(),affected_pkts.end(),temp_set.begin(),temp_set.end(), std::inserter(helper,helper.begin()));
-        affected_pkts.clear();
-        affected_pkts = helper;
-        helper.clear();
-      } else {
-        set_union(not_affected_pkts.begin(),not_affected_pkts.end(),temp_set.begin(),temp_set.end(), std::inserter(helper,helper.begin()));
-        not_affected_pkts.clear();
-        not_affected_pkts = helper;
-        helper.clear();
-        temp_coded.push_back((*itcodedpkts));
-      }
-      temp_set.clear();
-    }
-    coded_packets.clear();
-    coded_packets = temp_coded;
-    temp_coded.clear();
+  vector<int>::iterator duplit;
+  vector<int> temp_vect(packets_to_remove.begin(),packets_to_remove.end());
 
-    helper.clear();
-    set_intersection(lost_packets.begin(),lost_packets.end(),affected_pkts.begin(),affected_pkts.end(), std::inserter(helper,helper.begin()));
-    affected_pkts.clear();
-    affected_pkts = helper;
-    helper.clear();
-    set_intersection(lost_packets.begin(),lost_packets.end(),not_affected_pkts.begin(),not_affected_pkts.end(), std::inserter(helper,helper.begin()));
-    not_affected_pkts.clear();
-    not_affected_pkts = helper;
-    helper.clear();
-    set_difference(affected_pkts.begin(),affected_pkts.end(),not_affected_pkts.begin(),not_affected_pkts.end(), std::inserter(helper,helper.begin()));
-    for (iterhelper = helper.begin(); iterhelper != helper.end(); ++iterhelper){
-      lost_packets.erase(*iterhelper);
+  for (itcodedpkts = coded_packets.begin(); itcodedpkts != coded_packets.end(); ++itcodedpkts){
+    //set<int> temp_set((*itcodedpkts).begin(), (*itcodedpkts).end());
+    set_intersection((*itcodedpkts).begin(),(*itcodedpkts).end(),temp_vect.begin(),temp_vect.end(), std::inserter(intersect,intersect.begin()));
+
+    if (intersect.size() != 0){ //this is an affected coded pkt because it contains at least one known packet that is deleted, so build the list of all affected native pkts
+      set_union(affected_pkts.begin(),affected_pkts.end(),(*itcodedpkts).begin(),(*itcodedpkts).end(), std::inserter(helper,helper.begin()));
+      duplit = unique (helper.begin(), helper.end());
+      helper.resize(distance(helper.begin(),duplit));
+      affected_pkts.clear();
+      affected_pkts = helper;
+      helper.clear();
+    } else { //this is a non-affected pkt, so keep it in the pool of coded ones and build the list of all non-affected native pkts
+      set_union(not_affected_pkts.begin(),not_affected_pkts.end(),(*itcodedpkts).begin(),(*itcodedpkts).end(), std::inserter(helper,helper.begin()));
+      duplit = unique (helper.begin(), helper.end());
+      helper.resize(distance(helper.begin(),duplit));
+      not_affected_pkts.clear();
+      not_affected_pkts = helper;
+      helper.clear();
+      temp_coded.push_back((*itcodedpkts));
     }
-    affected_pkts.clear();
-    not_affected_pkts.clear();
-    helper.clear();
+    intersect.clear();
+    temp_vect.clear();
   }
+  coded_packets.clear();
+  coded_packets = temp_coded;
+  temp_coded.clear();
 
-} //end of delete_known_from_matrix
+  helper.clear();
+  vector<int> temp_vect_lost(lost_packets.begin(),lost_packets.end());
+  set_intersection(temp_vect_lost.begin(),temp_vect_lost.end(),affected_pkts.begin(),affected_pkts.end(), std::inserter(helper,helper.begin()));
+  duplit = unique (helper.begin(), helper.end());
+  helper.resize(distance(helper.begin(),duplit));
+  affected_pkts.clear();
+  affected_pkts = helper; //keep the set of lost packets that appear in affected coded ones
+  helper.clear();
+  set_intersection(temp_vect_lost.begin(),temp_vect_lost.end(),not_affected_pkts.begin(),not_affected_pkts.end(), std::inserter(helper,helper.begin()));
+  duplit = unique (helper.begin(), helper.end());
+  helper.resize(distance(helper.begin(),duplit));
+  not_affected_pkts.clear();
+  not_affected_pkts = helper; //keep the set of lost packets that appear in non-affected coded ones
+  helper.clear();
+  set_difference(affected_pkts.begin(),affected_pkts.end(),not_affected_pkts.begin(),not_affected_pkts.end(), std::inserter(helper,helper.begin()));
+  duplit = unique (helper.begin(), helper.end());
+  helper.resize(distance(helper.begin(),duplit)); //keep the lost pkts that appear only in affected packets
+  for (iterhelper = helper.begin(); iterhelper != helper.end(); ++iterhelper){
+    lost_packets.erase(*iterhelper); //clean lost_packets by removing those that appear only in affected coded pkts since those pkts are deleted
+  }
+  affected_pkts.clear();
+  not_affected_pkts.clear();
+  helper.clear();
+
+} //end of delete_known_and_affected_coded_and_lost
+
 
 void CaterpillarAcker::repopulate_seen_packets(){
 
@@ -1424,7 +1451,6 @@ void CaterpillarAcker::repopulate_seen_packets(){
     found_first_lost = false;
   }
   repopulatelost.clear();
-
 
 } //end of populate_seen_packets
 
