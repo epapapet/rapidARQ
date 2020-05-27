@@ -111,15 +111,9 @@ int TetrysTx::command(int argc, const char*const* argv)
 				rate_k = 2147483647; //i.e., deactivate coding
 			}
       timeout_ = atof(argv[4]);
-      double max_ack_size = (wnd_ + 1)*4.0;
-      double rtt_time = 2*lnk_delay_ + 8.0*(app_pkt_Size_ + max_ack_size)/lnk_bw_;
-      double minimum_rtt_time = rtt_time;
-      if (timeout_ == 0){ timeout_ = rtt_time; }
-      if (timeout_ < 0) { timeout_ = -(1.0/timeout_)*rtt_time; }
-      if (timeout_ < minimum_rtt_time) {
-        tcl.resultf("Timeout is too small.\n");
-				return(TCL_ERROR);
-      }
+      //double max_ack_size = (wnd_ + 1)*4.0;
+      //double rtt_time = 2*lnk_delay_ + 8.0*(app_pkt_Size_ + max_ack_size)/lnk_bw_;
+      //double minimum_rtt_time = rtt_time;
 			return(TCL_OK);
 		}
 	} return Connector::command(argc, argv);
@@ -424,13 +418,8 @@ void TetrysTx::handle(Event* e){
     //because we need to be sure that the event is not in the Scheduler (it is added when the packets is sent for the first time).
     if (received_tevent->isCancelled){
 
-      if (received_tevent->expirationTime < 0){
-        timeout_events[received_tevent->sn] = NULL;
-        delete e;
-      } else if ( received_tevent->expirationTime > Scheduler::instance().clock() ) {
-        received_tevent->isCancelled = false;
-        Scheduler::instance().schedule(this, received_tevent, received_tevent->expirationTime - Scheduler::instance().clock());
-      }
+      timeout_events[received_tevent->sn] = NULL;
+      delete e;
 
     } else { //the event is not cancelled
 
@@ -485,14 +474,26 @@ int TetrysRx::command(int argc, const char*const* argv)
     if (strcmp(argv[1], "update-delays") == 0) {
       delay_ = arq_tx_->get_linkdelay(); //the propagation delay
       ack_period = atof(argv[2]);
-      double coding_cycles = floor(arq_tx_->get_wnd()/arq_tx_->get_ratek());
+      int coding_cycles = arq_tx_->get_wnd()/arq_tx_->get_ratek();
       double max_coded_size = arq_tx_->get_apppktsize() + (arq_tx_->get_wnd() + 1)*4.0;
-      //double max_ack_size = (arq_tx_->get_wnd() + 1)*4.0;
       if (ack_period == 0) {
         ack_period = 8.0*(arq_tx_->get_wnd()*arq_tx_->get_apppktsize() + coding_cycles*max_coded_size)/arq_tx_->get_linkbw();
       }
       if (ack_period < 0){
         ack_period = -(1.0/ack_period)*8.0*(arq_tx_->get_wnd()*arq_tx_->get_apppktsize() + coding_cycles*max_coded_size)/arq_tx_->get_linkbw();
+      }
+      double temp_timeout = arq_tx_->get_timeout();
+      double max_ack_size = (arq_tx_->get_wnd() + 1)*4.0;
+      double rtt_time = 2*arq_tx_->get_linkdelay() + 8.0*(arq_tx_->get_apppktsize() + max_ack_size)/arq_tx_->get_linkbw();
+      double reference_value = rtt_time + ack_period/2.0; //max(rtt_time, ack_period);
+      if (temp_timeout == 0){
+        arq_tx_->set_timeout(reference_value);
+      } else if (temp_timeout < 0) {
+        arq_tx_->set_timeout(-(1.0/temp_timeout)*reference_value);
+      }
+      if (arq_tx_->get_timeout() < reference_value) {
+        tcl.resultf("Timeout is too small.\n");
+				return(TCL_ERROR);
       }
 			return(TCL_OK);
 		}
@@ -691,6 +692,18 @@ void TetrysAcker::recv(Packet* p, Handler* h)
   Scheduler::instance().schedule(this, ack_e, ack_period);
   //---------------------------------//
 
+  //Sent a cumulative ack =======================================//
+  Event *ack_e_two;
+  TetrysACKEvent *new_ACKEvent = new TetrysACKEvent();
+  new_ACKEvent->type = ACK;
+  new_ACKEvent->sn = -1;
+  new_ACKEvent->uid = -1;
+  new_ACKEvent->coded_ack = create_coded_ack();
+  ack_e_two = (Event *)new_ACKEvent;
+
+  Scheduler::instance().schedule(arq_tx_, ack_e_two, (delay_ + 8.0*HDR_CMN(new_ACKEvent->coded_ack)->size_ /arq_tx_->get_linkbw()));
+  //=============================================================//
+
 } //end of recv
 
 
@@ -746,7 +759,7 @@ void TetrysAcker::print_parameters(double err, double ack, double sim_time, int 
   }
   printf("Error rate (backward):");printf("\t\t%.2f\n", ack);
   printf("ACK period (ms-%s wnd duration):","%"); printf("\t%.2f-", 1.0e3 *ack_period); printf("%.0f%s\n", 100.0*arq_tx_->get_linkbw()*ack_period/(double)(8.0*totwind*arq_tx_->get_apppktsize()), "%");
-  printf("Timeout (ms-%sRTT):","%");printf("\t\t%.2f-", 1.0e3 *arq_tx_->get_timeout());printf("%.0f%s\n", 100.0*arq_tx_->get_timeout()/rtttimecor,"%"); printf("\033[0m");
+  printf("Timeout (ms-%sACK period):","%");printf("\t%.2f-", 1.0e3 *arq_tx_->get_timeout());printf("%.0f%s\n", 100.0*arq_tx_->get_timeout()/ack_period,"%"); printf("\033[0m");
   printf("\033[0;32m");printf("Coding size - Rate:");printf("\t\t%d-", arq_tx_->get_ratek());printf("%d%s%d\n", 1, "/", (1+arq_tx_->get_ratek()));printf("\033[0m");
   printf("\033[1;35m");printf("Simulation time (secs):\t\t%.2f\n", sim_time);
   printf("Seed:\t\t\t\t%.d\n", seed);printf("\033[0m");

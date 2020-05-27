@@ -52,6 +52,7 @@ class TetrysTx : public Connector {
   int get_ratek() {return rate_k;}
   int get_apppktsize() {return app_pkt_Size_;}
   double get_timeout() {return timeout_;}
+  void set_timeout(double timeval) { timeout_ = timeval; }
 	double get_linkdelay() {return lnk_delay_;}
 	double get_linkbw() {return lnk_bw_;}
 	//functions used in statistics logging
