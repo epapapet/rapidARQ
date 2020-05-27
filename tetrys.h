@@ -172,6 +172,7 @@ public:
   void delete_known_and_affected_coded_and_lost(set<int> packets_to_remove);
 
  private:
+  char* filename; //file where results will be stored
 	Packet* create_coded_ack();
 	void parse_coded_packet(Packet *p, Handler *h);
 	bool decode(Handler* h, bool afterCoded);

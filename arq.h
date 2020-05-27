@@ -186,6 +186,7 @@ public:
   void repopulate_seen_packets();
 
  private:
+  char* filename; //file where results will be stored
 	Packet* create_coded_ack();
 	void parse_coded_packet(Packet *p, Handler *h);
 	bool decode(Handler* h, bool afterCoded);

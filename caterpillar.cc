@@ -734,6 +734,25 @@ int CaterpillarAcker::command(int argc, const char*const* argv)
 			nacker = (CaterpillarNacker*)TclObject::lookup(argv[2]);
 			return(TCL_OK);
 		}
+    if (strcmp(argv[1], "setup-filename") == 0) {
+      switch (atoi(argv[2])){
+        case 1:
+          filename = "arq/results/caterpillar_lr_rtt.txt";
+          break;
+        case 2:
+          filename = "arq/results/caterpillar_cr_lr.txt";
+          break;
+        case 3:
+          filename = "arq/results/caterpillar_rtt.txt";
+          break;
+        case 4:
+          filename = "arq/results/caterpillar_bw.txt";
+          break;
+        default:
+          filename = "arq/results/caterpillar.txt";
+      }
+    	return(TCL_OK);
+    }
 	} else if (argc == 6) {
     if (strcmp(argv[1], "print-parameters") == 0) {
       print_parameters(atof(argv[2]), atof(argv[3]), atof(argv[4]), atoi(argv[5]));
@@ -971,27 +990,28 @@ void CaterpillarAcker::print_stats(double err, double ack, double sim_time, int 
     system(command_one);
   }
   FILE *fp;
-  fp = fopen("arq/results/caterpillar.txt", "a+");
+  fp = fopen(filename, "a+");
   if(fp == NULL){
     printf("Error in creating file.\n");
     exit(0);
   }
-  //int cntLines = 0;
+  int cntLines = 0;
   fseek(fp, 0, SEEK_END);
   if(ftell(fp) == 0) {
-      char* header =  "bandwidth  propagation_delay window_size cbr_rate  pkt_size  err_rate  ack_rate  num_rtx rate_k  timeout simulation_time seed  Start time (sec) Finish time (sec) Total number of delivered pkts  Delivered data (in mega bytes)  Total throughput (Mbps) Total pause time (secs) Unique packets sent Coded packets sent  Mean delay (msec) Maximum delay (msec)  Minimum delay (msec)  Mean delay jitter (msec)  Avg num of retransmissions  Packet loss rate  Number of actual decodings  Avg num of decoded pkts per decoding  Average decoding matrix size  Max decoding matrix size  Average size of involved_known_packets  Max size of involved_known_packets  Average size of known_packets  Max size of known_packets";
-      //char* header =  "SimID bandwidth  propagation_delay window_size cbr_rate  pkt_size  err_rate  ack_rate  num_rtx rate_k  timeout simulation_time seed  Start time (sec) Finish time (sec) Total number of delivered pkts  Delivered data (in mega bytes)  Total throughput (Mbps) Total pause time (secs) Unique packets sent Coded packets sent  Mean delay (msec) Maximum delay (msec)  Minimum delay (msec)  Mean delay jitter (msec)  Avg num of retransmissions  Packet loss rate  Number of actual decodings  Avg num of decoded pkts per decoding  Average decoding matrix size  Max decoding matrix size  Average size of involved_known_packets  Max size of involved_known_packets  Average size of known_packets  Max size of known_packets";
+    //char* header =  "bandwidth  propagation_delay window_size cbr_rate  pkt_size  err_rate  ack_rate  num_rtx rate_k  timeout simulation_time seed  Start time (sec) Finish time (sec) Total number of delivered pkts  Delivered data (in mega bytes)  Total throughput (Mbps) Total pause time (secs) Unique packets sent Coded packets sent  Mean delay (msec) Maximum delay (msec)  Minimum delay (msec)  Mean delay jitter (msec)  Avg num of retransmissions  Packet loss rate  Number of actual decodings  Avg num of decoded pkts per decoding  Average decoding matrix size  Max decoding matrix size  Average size of involved_known_packets  Max size of involved_known_packets  Average size of known_packets  Max size of known_packets";
+    char* header =  "SimID bandwidth  propagation_delay window_size cbr_rate  pkt_size  err_rate  ack_rate  num_rtx rate_k  timeout simulation_time seed  Start time (sec) Finish time (sec) Total number of delivered pkts  Delivered data (in mega bytes)  Total throughput (Mbps) Total pause time (secs) Unique packets sent Coded packets sent  Mean delay (msec) Maximum delay (msec)  Minimum delay (msec)  Mean delay jitter (msec)  Avg num of retransmissions  Packet loss rate  Number of actual decodings  Avg num of decoded pkts per decoding  Average decoding matrix size  Max decoding matrix size  Average size of involved_known_packets  Max size of involved_known_packets  Average size of known_packets  Max size of known_packets";
     fprintf(fp, "%s\n", header);
-    //cntLines = 1;
-  } /*else {
+    cntLines = 1;
+  } else {
     char command_two[256];
     char numLines[256];
-    sprintf(command_two, "wc -l < %s", "arq/results/caterpillar.txt");
+    sprintf(command_two, "wc -l < %s", filename);
+    //sprintf(command_two, "wc -l < %s", "arq/results/caterpillar.txt");
     fgets(numLines, 256, popen(command_two, "r"));
     cntLines = (int)strtoull(numLines, NULL, 10);
   }
-  fprintf(fp, "%d %.0f %.3f  %d  %.0f  %d  %.3f  %.3f  %d  %d  %.3f  %.0f  %d  %f %f  %.0f  %.3f  %f  %f  %.0f  %.0f  %f  %f  %f  %f  %f  %f  %.0f  %f  %f  %0.f  %f  %0.f  %f  %0.f\n", cntLines, arq_tx_->get_linkbw(), arq_tx_->get_linkdelay(), wnd_, arq_tx_->get_linkbw(), arq_tx_->get_apppktsize(), err, ack, arq_tx_->get_retry_limit(), arq_tx_->get_ratek(), arq_tx_->get_timeout(), sim_time, seed, arq_tx_->get_start_time(), finish_time, delivered_pkts, delivered_data/1048576, throughput * 1.0e-6, arq_tx_->get_total_pause_time(), arq_tx_->get_total_packets_sent(), arq_tx_->get_total_coded_packets_sent(), mean * 1.0e+3, max_delay * 1.0e+3, min_delay * 1.0e+3, meanjitter * 1.0e+3, avg_rtxs, packet_loss_rate, num_of_decodings, avg_num_of_decoded_pkts, average_dec_matrix_size, max_dec_matrix_size, average_inv_known_pkts_size, max_inv_known_pkts_size, average_known_pkts_size, max_known_pkts_size);*/
-  fprintf(fp, "%.0f %.3f  %d  %.0f  %d  %.3f  %.3f  %d  %d  %.3f  %.0f  %d  %f %f  %.0f  %.3f  %f  %f  %.0f  %.0f  %f  %f  %f  %f  %f  %f  %.0f  %f  %f  %0.f  %f  %0.f  %f  %0.f\n", arq_tx_->get_linkbw(), arq_tx_->get_linkdelay(), wnd_, arq_tx_->get_linkbw(), arq_tx_->get_apppktsize(), err, ack, arq_tx_->get_retry_limit(), arq_tx_->get_ratek(), arq_tx_->get_timeout(), sim_time, seed, arq_tx_->get_start_time(), finish_time, delivered_pkts, delivered_data/1048576, throughput * 1.0e-6, arq_tx_->get_total_pause_time(), arq_tx_->get_total_packets_sent(), arq_tx_->get_total_coded_packets_sent(), mean * 1.0e+3, max_delay * 1.0e+3, min_delay * 1.0e+3, meanjitter * 1.0e+3, avg_rtxs, packet_loss_rate, num_of_decodings, avg_num_of_decoded_pkts, average_dec_matrix_size, max_dec_matrix_size, average_inv_known_pkts_size, max_inv_known_pkts_size, average_known_pkts_size, max_known_pkts_size);
+  fprintf(fp, "%d %.0f %.3f  %d  %.0f  %d  %.3f  %.3f  %d  %d  %.3f  %.0f  %d  %f %f  %.0f  %.3f  %f  %f  %.0f  %.0f  %f  %f  %f  %f  %f  %f  %.0f  %f  %f  %0.f  %f  %0.f  %f  %0.f\n", cntLines, arq_tx_->get_linkbw(), arq_tx_->get_linkdelay(), wnd_, arq_tx_->get_linkbw(), arq_tx_->get_apppktsize(), err, ack, arq_tx_->get_retry_limit(), arq_tx_->get_ratek(), arq_tx_->get_timeout(), sim_time, seed, arq_tx_->get_start_time(), finish_time, delivered_pkts, delivered_data/1048576, throughput * 1.0e-6, arq_tx_->get_total_pause_time(), arq_tx_->get_total_packets_sent(), arq_tx_->get_total_coded_packets_sent(), mean * 1.0e+3, max_delay * 1.0e+3, min_delay * 1.0e+3, meanjitter * 1.0e+3, avg_rtxs, packet_loss_rate, num_of_decodings, avg_num_of_decoded_pkts, average_dec_matrix_size, max_dec_matrix_size, average_inv_known_pkts_size, max_inv_known_pkts_size, average_known_pkts_size, max_known_pkts_size);
+  //fprintf(fp, "%.0f %.3f  %d  %.0f  %d  %.3f  %.3f  %d  %d  %.3f  %.0f  %d  %f %f  %.0f  %.3f  %f  %f  %.0f  %.0f  %f  %f  %f  %f  %f  %f  %.0f  %f  %f  %0.f  %f  %0.f  %f  %0.f\n", arq_tx_->get_linkbw(), arq_tx_->get_linkdelay(), wnd_, arq_tx_->get_linkbw(), arq_tx_->get_apppktsize(), err, ack, arq_tx_->get_retry_limit(), arq_tx_->get_ratek(), arq_tx_->get_timeout(), sim_time, seed, arq_tx_->get_start_time(), finish_time, delivered_pkts, delivered_data/1048576, throughput * 1.0e-6, arq_tx_->get_total_pause_time(), arq_tx_->get_total_packets_sent(), arq_tx_->get_total_coded_packets_sent(), mean * 1.0e+3, max_delay * 1.0e+3, min_delay * 1.0e+3, meanjitter * 1.0e+3, avg_rtxs, packet_loss_rate, num_of_decodings, avg_num_of_decoded_pkts, average_dec_matrix_size, max_dec_matrix_size, average_inv_known_pkts_size, max_inv_known_pkts_size, average_known_pkts_size, max_known_pkts_size);
   fclose(fp);
 } //end of print_stats
 
