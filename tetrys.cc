@@ -472,26 +472,28 @@ int TetrysRx::command(int argc, const char*const* argv)
 	Tcl& tcl = Tcl::instance();
   if (argc == 3) {
     if (strcmp(argv[1], "update-delays") == 0) {
-      delay_ = arq_tx_->get_linkdelay(); //the propagation delay
       ack_period = atof(argv[2]);
-      int coding_cycles = arq_tx_->get_wnd()/arq_tx_->get_ratek();
-      double max_coded_size = arq_tx_->get_apppktsize() + (arq_tx_->get_wnd() + 1)*4.0;
-      if (ack_period == 0) {
-        ack_period = 8.0*(arq_tx_->get_wnd()*arq_tx_->get_apppktsize() + coding_cycles*max_coded_size)/arq_tx_->get_linkbw();
-      }
-      if (ack_period < 0){
-        ack_period = -(1.0/ack_period)*8.0*(arq_tx_->get_wnd()*arq_tx_->get_apppktsize() + coding_cycles*max_coded_size)/arq_tx_->get_linkbw();
-      }
-      double temp_timeout = arq_tx_->get_timeout();
+      delay_ = arq_tx_->get_linkdelay(); //the propagation delay
       double max_ack_size = (arq_tx_->get_wnd() + 1)*4.0;
       double rtt_time = 2*arq_tx_->get_linkdelay() + 8.0*(arq_tx_->get_apppktsize() + max_ack_size)/arq_tx_->get_linkbw();
-      double reference_value = rtt_time;
-      if (temp_timeout == 0){
-        arq_tx_->set_timeout(reference_value);
-      } else if (temp_timeout < 0) {
-        arq_tx_->set_timeout(-(1.0/temp_timeout)*reference_value);
+      //int coding_cycles = arq_tx_->get_wnd()/arq_tx_->get_ratek();
+      //double max_coded_size = arq_tx_->get_apppktsize() + (arq_tx_->get_wnd() + 1)*4.0;
+      //double ack_reference_value = 8.0*(arq_tx_->get_wnd()*arq_tx_->get_apppktsize() + coding_cycles*max_coded_size)/arq_tx_->get_linkbw();
+      double ack_reference_value = rtt_time;
+      if (ack_period == 0) {
+        ack_period = ack_reference_value;
       }
-      if (arq_tx_->get_timeout() < reference_value) {
+      if (ack_period < 0){
+        ack_period = -(1.0/ack_period)*ack_reference_value;
+      }
+      double temp_timeout = arq_tx_->get_timeout();
+      double timeout_reference_value = rtt_time;
+      if (temp_timeout == 0){
+        arq_tx_->set_timeout(timeout_reference_value);
+      } else if (temp_timeout < 0) {
+        arq_tx_->set_timeout(-(1.0/temp_timeout)*timeout_reference_value);
+      }
+      if (arq_tx_->get_timeout() < timeout_reference_value) {
         tcl.resultf("Timeout is too small.\n");
 				return(TCL_ERROR);
       }
@@ -781,8 +783,10 @@ void TetrysAcker::print_parameters(double err, double ack, double sim_time, int 
     printf("Burst duration percentage:");printf("\t%.2f\n", err-floor(err));
   }
   printf("Error rate (backward):");printf("\t\t%.2f\n", ack);
-  printf("ACK period (ms-%s wnd duration):","%"); printf("\t%.2f-", 1.0e3 *ack_period); printf("%.0f%s\n", 100.0*arq_tx_->get_linkbw()*ack_period/(double)(8.0*totwind*arq_tx_->get_apppktsize()), "%");
-  printf("Timeout (ms-%sACK period):","%");printf("\t%.2f-", 1.0e3 *arq_tx_->get_timeout());printf("%.0f%s\n", 100.0*arq_tx_->get_timeout()/ack_period,"%"); printf("\033[0m");
+  //printf("ACK period (ms-%s wnd duration):","%"); printf("\t%.2f-", 1.0e3 *ack_period); printf("%.0f%s\n", 100.0*arq_tx_->get_linkbw()*ack_period/(double)(8.0*totwind*arq_tx_->get_apppktsize()), "%");
+  printf("ACK period (ms-%sRTT):","%"); printf("\t\t%.2f-", 1.0e3 *ack_period); printf("%.0f%s\n", 100.0*ack_period/rtttimecor, "%");
+  //printf("Timeout (ms-%sACK period):","%");printf("\t%.2f-", 1.0e3 *arq_tx_->get_timeout());printf("%.0f%s\n", 100.0*arq_tx_->get_timeout()/ack_period,"%"); printf("\033[0m");
+  printf("Timeout (ms-%sRTT):","%");printf("\t\t%.2f-", 1.0e3 *arq_tx_->get_timeout());printf("%.0f%s\n", 100.0*arq_tx_->get_timeout()/rtttimecor,"%");
   printf("\033[0;32m");printf("Coding size - Rate:");printf("\t\t%d-", arq_tx_->get_ratek());printf("%d%s%d\n", 1, "/", (1+arq_tx_->get_ratek()));printf("\033[0m");
   printf("\033[1;35m");printf("Simulation time (secs):\t\t%.2f\n", sim_time);
   printf("Seed:\t\t\t\t%.d\n", seed);printf("\033[0m");
