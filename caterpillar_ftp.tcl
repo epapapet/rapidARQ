@@ -1,6 +1,6 @@
 set arg_cnt [lindex $argc]
-if {$arg_cnt != 11} {
-    puts "# usage: ns <scriptfile> <bandwidth> <propagation_delay> <window_size> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <timeout> <simulation_time> <seed>"
+if {$arg_cnt != 12} {
+    puts "# usage: ns <scriptfile> <bandwidth> <propagation_delay> <window_size> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <timeout> <simulation_time> <seed> <experiment_id>"
     puts "# <bandwidth> : in bps, example: set to 5Mbps -> 5M or 5000000"
     puts "# <propagation_delay> : in secs, example: set to 30ms -> 30ms or 0.03"
     puts "# <window_size> : arq window size in pkts"
@@ -12,6 +12,7 @@ if {$arg_cnt != 11} {
     puts "# <timeout> : the time for expiring an non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v"
     puts "# <simulation_time> : the simulation time in secs"
     puts "# <seed> : seed used to produce randomness"
+	puts "# <experiment_id> : an id that determines the filename where simulation's results will be stored. For experiments 1-4, use values 1-4, otherwise results will be saved in a shared txt file."
     exit 1
 }
 
@@ -24,7 +25,7 @@ CaterpillarTx set debug_ NULL
 CaterpillarAcker set debug_ NULL
 CaterpillarNacker set debug_ NULL
 
-SimpleLink instproc link-arq { wndsize apktsz ratekk timeoutt limit vgseed ackerr } {
+SimpleLink instproc link-arq { wndsize apktsz ratekk timeoutt limit vgseed ackerr eid} {
     $self instvar link_ link_errmodule_ queue_ drophead_ head_
     $self instvar tARQ_ acker_ nacker_
  
@@ -50,6 +51,7 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk timeoutt limit vgseed acker
     $acker_ attach-CaterpillarTx $tARQ_
     $acker_ setup-CaterpillarNacker $nacker_
     $acker_ setup-wnd $wndsize
+	$acker_ setup-filename $eid
     $acker_ update-delays
     
     #Nacker set up
@@ -69,9 +71,9 @@ SimpleLink instproc link-arq { wndsize apktsz ratekk timeoutt limit vgseed acker
 	return $acker_
 }
 
-Simulator instproc link-arq {wndsize apktsize ratek timeout limit from to vgseed ackerr} {
+Simulator instproc link-arq {wndsize apktsize ratek timeout limit from to vgseed ackerr id} {
     set link [$self link $from $to]
-    set acker [$link link-arq $wndsize $apktsize $ratek $timeout $limit $vgseed $ackerr]
+    set acker [$link link-arq $wndsize $apktsize $ratek $timeout $limit $vgseed $ackerr $id]
 	return $acker
 }
 
@@ -126,7 +128,7 @@ if {[string first "ms" [lindex $argv 8]] != -1} {
     set timeout_period [lindex $argv 8]
 }
 set apppktSize [lindex $argv 3]
-set receiver [$ns link-arq $window $apppktSize $rate_k $timeout_period $num_rtx $n1 $n3 [lindex $argv 10] [lindex $argv 5]]
+set receiver [$ns link-arq $window $apppktSize $rate_k $timeout_period $num_rtx $n1 $n3 [lindex $argv 10] [lindex $argv 5] [lindex $argv 11]]
 
 #=== Set up a UDP connection ===
 set tcp [new Agent/TCP]
