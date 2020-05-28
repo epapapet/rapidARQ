@@ -587,7 +587,8 @@ int TetrysAcker::command(int argc, const char*const* argv)
           filename = "arq/results/tetrys_bw.txt";
           break;
         default:
-          filename = "arq/results/tetrys.txt";
+          filename = new char [strlen(argv[2]) + strlen("arq/results/") + strlen(".txt")];
+          sprintf(filename,"%s%s.txt","arq/results/",argv[2]);
       }
     	return(TCL_OK);
     }

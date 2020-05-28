@@ -1,5 +1,6 @@
 #include "arq.h"
 #include "packet.h"
+#include <string.h>
 
 static class CARQTxClass: public TclClass {
  public:
@@ -799,7 +800,8 @@ int CARQAcker::command(int argc, const char*const* argv)
           filename = "arq/results/carq_bw.txt";
           break;
         default:
-          filename = "arq/results/carq.txt";
+          filename = new char [strlen(argv[2]) + strlen("arq/results/") + strlen(".txt")];
+          sprintf(filename,"%s%s.txt","arq/results/",argv[2]);
       }
     	return(TCL_OK);
     }
