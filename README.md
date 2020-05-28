@@ -14,7 +14,7 @@ The folder contains:
 A simulation with C-ARQ can be executed by using the following syntax:
 
 ```
-./ns arq/<scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <timeout> <simulation_time> <seed>
+./ns arq/<scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <timeout> <simulation_time> <seed> <experiment_id>
 ```
 
 where:
@@ -33,13 +33,14 @@ where:
 * \<timeout\> : the time for expiring a non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v
 * \<simulation_time\> : the simulation time in secs
 * \<seed\> : seed used to produce randomness
+* \<experiment_id\> : an id that determines the filename where simulation's results will be stored. For experiments 1-4, use values 1-4, otherwise results will be saved in a txt file determined by user's value.
 
 
 \<cbr_rate\> parameter is not available in case *carq_ftp.tcl* is executed.
 
 One can also use:
 ```
-./ns arq/carq_cbr_twostate.tcl <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <num_rtx> <rate_k> <coding_depth> <timeout> <simulation_time> <seed>
+./ns arq/carq_cbr_twostate.tcl <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <num_rtx> <rate_k> <coding_depth> <timeout> <simulation_time> <seed> <experiment_id>
 ```
 This script uses a two state on-off error model in the forward channel. One state corresponds to an error-free period while the other to a burst error period. The two extra arguments comnpared to the other scripts are:
 
@@ -53,7 +54,7 @@ A simulation with Caterpillar-FB can be executed by using the following syntax:
 
 ```
 
-./ns arq/<scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <timeout> <simulation_time> <seed>
+./ns arq/<scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <timeout> <simulation_time> <seed> <experiment_id>
 ```
 
 where:
@@ -71,13 +72,14 @@ where:
 * \<timeout\> : the time for expiring a non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v
 * \<simulation_time\> : the simulation time in secs
 * \<seed\> : seed used to produce randomness
+* \<experiment_id\> : an id that determines the filename where simulation's results will be stored. For experiments 1-4, use values 1-4, otherwise results will be saved in a txt file determined by user's value.
 
 
 \<cbr_rate\> parameter is not available in case *caterpillar_ftp.tcl* is executed.
 
 One can also use:
 ```
-./ns arq/caterpillar_cbr_twostate.tcl <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <num_rtx> <rate_k> <timeout> <simulation_time> <seed>
+./ns arq/caterpillar_cbr_twostate.tcl <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <num_rtx> <rate_k> <timeout> <simulation_time> <seed> <experiment_id>
 ```
 This script uses a two state on-off error model in the forward channel. One state corresponds to an error-free period while the other to a burst error period. The two extra arguments comnpared to the other scripts are:
 
@@ -89,7 +91,7 @@ This script uses a two state on-off error model in the forward channel. One stat
 A simulation with Tetrys can be executed by using the following syntax:
 
 ```
-./ns arq/<scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <rate_k> <ack_period> <timeout> <simulation_time> <seed>
+./ns arq/<scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <rate_k> <ack_period> <timeout> <simulation_time> <seed> <experiment_id>
 ```
 
 where:
@@ -107,6 +109,7 @@ where:
 * \<timeout\> : the time for expiring an non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v
 * \<simulation_time\> : the simulation time in secs
 * \<seed\> : seed used to produce randomness
+* \<experiment_id\> : an id that determines the filename where simulation's results will be stored. For experiments 1-4, use values 1-4, otherwise results will be saved in a txt file determined by user's value.
 
 \<cbr_rate\> parameter is not available in case *tetrys_ftp.tcl* is executed.
 
@@ -125,7 +128,7 @@ A simulation with Selective Repeat (SR) ARQ can be executed by using the followi
 
 ```
 
-./ns arq/<scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <timeout> <simulation_time> <seed>
+./ns arq/<scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <timeout> <simulation_time> <seed> <experiment_id>
 ```
 
 where:
@@ -142,6 +145,7 @@ where:
 * \<timeout\> : the time for expiring a non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v
 * \<simulation_time\> : the simulation time in secs
 * \<seed\> : seed used to produce randomness
+* \<experiment_id\> : an id that determines the filename where simulation's results will be stored. For experiments 1-4, use values 1-4, otherwise results will be saved in a txt file determined by user's value.
 
 
 One can also use:
