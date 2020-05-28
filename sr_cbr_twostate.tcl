@@ -18,7 +18,6 @@ if {$arg_cnt != 13} {
 }
 
 SRARQTx set retry_limit_ 100
-SRARQTx set rate_k 1000
 SRARQTx set lnk_delay_ 30ms
 SRARQTx set lnk_bw_ 10M
 SRARQTx set app_pkt_Size_ 1000
