@@ -3,7 +3,7 @@ set opt(protocol) CARQ
 set opt(bw) 5M
 set opt(delay) 50ms
 set opt(wnd) 65
-set opt(transport) "CBR"
+set opt(apptype) "CBR"
 set opt(cbrrate) 5M
 set opt(pktsize) 1000
 set opt(err) 0.1
@@ -22,7 +22,7 @@ set enabled(protocol) 0
 set enabled(bw) 0
 set enabled(delay) 0
 set enabled(wnd) 0
-set enabled(transport) 0
+set enabled(apptype) 0
 set enabled(cbrrate) 0
 set enabled(pktsize) 0
 set enabled(err) 0
@@ -37,7 +37,7 @@ set enabled(simtime) 0
 set enabled(seed) 0
 set enabled(resfile) 0
 
-if { $argc == 0} { puts "Using default values"}
+if { $argc == 0} { puts -nonewline "\033\[1;31m"; puts "Using default values. Type generic.tcl -HELP for usage instructions."; puts -nonewline "\033\[0m"; puts ""}
 
 for {set i 0} {$i < $argc} {incr i} {
 
@@ -50,8 +50,8 @@ for {set i 0} {$i < $argc} {incr i} {
         set parameter_index "delay"
     } elseif {$argument_prefix == "-WND"} {
         set parameter_index "wnd"
-    } elseif {$argument_prefix == "-TRANSPORT"} {
-        set parameter_index "transport"
+    } elseif {$argument_prefix == "-APP_TYPE"} {
+        set parameter_index "apptype"
     } elseif {$argument_prefix == "-CBR_RATE"} {
         set parameter_index "cbrrate"
     } elseif {$argument_prefix == "-PKT_SIZE"} {
@@ -66,11 +66,11 @@ for {set i 0} {$i < $argc} {incr i} {
         set parameter_index "rtx"
     } elseif {$argument_prefix == "-CODERATE"} {
         set parameter_index "coderate"
-    } elseif {$argument_prefix == "-CODINGDEPTH"} {
+    } elseif {$argument_prefix == "-CODING_DEPTH"} {
         set parameter_index "codingdepth"
     } elseif {$argument_prefix == "-TIMEOUT"} {
         set parameter_index "timeout"
-    } elseif {$argument_prefix == "-ACKPERIOD"} {
+    } elseif {$argument_prefix == "-ACK_PERIOD"} {
         set parameter_index "ackperiod"
     } elseif {$argument_prefix == "-SIMTIME"} {
         set parameter_index "simtime"
@@ -79,25 +79,31 @@ for {set i 0} {$i < $argc} {incr i} {
     } elseif {$argument_prefix == "-RESULTSFILE"} {
         set parameter_index "resfile"
     } else {
-    puts "# usage: ns <scriptfile> -OPTION1 value1, -OPTION2 value2, -OPTION3 value3, .... where OPTION1, OPTION2, OPTION3, .... can be one of the following options:"
-    puts "# -PROTOCOL <pr_value> : set the protocol to be used, <pr_value> can be CARQ, Caterpillar, Tetrys or SRARQ"
-    puts "# -BW <b_value> : set bandwidth, <b_value> in bps, example: set to 5Mbps -> 5M or 5000000"
-    puts "# -DELAY <d_value> : set propagation delay, <d_value> in secs, example: set to 30ms -> 30ms or 0.03"
-    puts "# -WND <w_value> : set the arq window size, <w_value> in pkts"
-    puts "# -TRANSPORT <tr_value>: set the transport protocol to be used, <tr_value> is either FTP or CBR"
-    puts "# -CBR_RATE <cr_value> : set the rate of the cbr applications, <cr_value> in bps, example: set to 3Mbps -> 3M or 3000000"
-    puts "# -PKT_SIZE <ps_value> : set the size of udp pkt (including UDP and IP headers), <ps_value> in bytes"
-    puts "# -ERR <e_value> : set the error rate in the forward channel (error rate for frames), 0 <= <e_value> < 1"
-    puts "# -BURST_DURATION <bd_value> : 0,..,1 -> the percentage of time that the channel is in an error burst state, usage enables a two-state error channel"
-    puts "# -ACK_ERR <ae_value> : set the error rate in the return channel (error rate for ACKs), 0 <= <ae_value> < 1"
-    puts "# -RTX <r_value> : set the number of retransmissions allowed for a native pkt, <r_value> is an integer >= 0"
-    puts "# -CODERATE <cr_value> : set the number of native pkts sent before creating a coded pkt (actually define the code rate), <cr_value> is an integer >= 0, 0 deactivates coding"
-	puts "# -CODING_DEPTH <cd_value> : set the number of coding cycles used to create a coded pkt, <cd_value> is an integer \in \[0, floor(<w_value/<c_value>>)\], 0 set the coding window equal to the arq window"    
-	puts "# -TIMEOUT <t_value> : set the time for expiring an non acked pkt, <t_value> in secs, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v"
-    puts "# -ACKPERIOD <ackp_value> : set the period for sending periodic acks, <ackp_value> in secs, example: set to 30ms->30ms or 0.03, 0 sets ack_period=RTT, a value v<0 will set the ack_period=-(window duration)/v"
-    puts "# -SIMTIME <s_time> : set the simulation time, <s_time> in secs"
-    puts "# -SEED <se_value> : set the seed to control randomness"
-	puts "# -RESULTSFILE <res_value> : set the filename to store results, <res_value> is a string, setting <res_value> to the values 1-4 will produce predefined file names"
+        puts "# usage: ns <scriptfile> -OPTION1 value1, -OPTION2 value2, -OPTION3 value3, .... where OPTION1, OPTION2, OPTION3, .... can be one of the following options:"
+        puts "# -PROTOCOL <pr_value> : set the protocol to be used, <pr_value> can be CARQ, Caterpillar, Tetrys or SRARQ"
+        puts "# -BW <b_value> : set bandwidth, <b_value> in bps, example: set to 5Mbps -> 5M or 5000000"
+        puts "# -DELAY <d_value> : set propagation delay, <d_value> in secs, example: set to 30ms -> 30ms or 0.03"
+        puts "# -WND <w_value> : set the arq window size, <w_value> in pkts"
+        puts "# -APP_TYPE <appt_value>: set the type of application to be used for generating data, <appt_value> is either FTP or CBR"
+        puts "# -CBR_RATE <cr_value> : set the rate of the cbr applications, <cr_value> in bps, example: set to 3Mbps -> 3M or 3000000"
+        puts "# -PKT_SIZE <ps_value> : set the size of udp pkt (including UDP and IP headers), <ps_value> in bytes"
+        puts "# -ERR <e_value> : set the error rate in the forward channel (error rate for frames), 0 <= <e_value> < 1"
+        puts "# -BURST_DURATION <bd_value> : 0,..,1 -> the percentage of time that the channel is in an error burst state, usage enables a two-state error channel"
+        puts "# -ACK_ERR <ae_value> : set the error rate in the return channel (error rate for ACKs), 0 <= <ae_value> < 1"
+        puts "# -RTX <r_value> : set the number of retransmissions allowed for a native pkt, <r_value> is an integer >= 0"
+        puts "# -CODERATE <cr_value> : set the number of native pkts sent before creating a coded pkt (actually define the code rate), <cr_value> is an integer >= 0, 0 deactivates coding"
+        puts "# -CODING_DEPTH <cd_value> : set the number of coding cycles used to create a coded pkt, <cd_value> is an integer \in \[0, floor(<w_value/<c_value>>)\], 0 set the coding window equal to the arq window"
+        puts "# -TIMEOUT <t_value> : set the time for expiring an non acked pkt, <t_value> in secs, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v"
+        puts "# -ACK_PERIOD <ackp_value> : set the period for sending periodic acks, <ackp_value> in secs, example: set to 30ms->30ms or 0.03, 0 sets ack_period=RTT, a value v<0 will set the ack_period=-(window duration)/v"
+        puts "# -SIMTIME <s_time> : set the simulation time, <s_time> in secs"
+        puts "# -SEED <se_value> : set the seed to control randomness"
+        puts "# -RESULTSFILE <res_value> : set the filename to store results, <res_value> is a string, setting <res_value> to the values 1-4 will produce predefined file names"
+
+        puts "# Note that:"
+        puts "# - options CODERATE -CODING_DEPTH and ACK_PERIOD cannot be used with SRARQ"
+        puts "# - options CODING_DEPTH and RTX cannot be used with Tetrys"
+        puts "# - options CODING_DEPTH and ACK_PERIOD cannot be used with Catepillar"
+        puts "# - options ACK_PERIOD cannot be used with CARQ"
     
         exit 1
     }
@@ -111,27 +117,27 @@ for {set i 0} {$i < $argc} {incr i} {
 
     #Checks for argument correctness
     if { $opt(protocol) != "CARQ" &&  $opt(protocol) != "Caterpillar" && $opt(protocol) != "Tetrys" && $opt(protocol) != "SRARQ" } { 
-        puts "Not a valid protocol. Exiting..." 
+        puts -nonewline "\033\[1;31m"; puts "Not a valid protocol. Exiting..."; puts -nonewline "\033\[0m";
         exit 1
     }
     if { $opt(protocol) == "SRARQ" } {
         if { $enabled(coderate) == 1 || $enabled(codingdepth) == 1 || $enabled(ackperiod) == 1 } {
-            puts "Not compatible parameters..."
+            puts -nonewline "\033\[1;31m"; puts "SRARQ is not compatible with the CODERATE, CODING_DEPTH and ACK_PERIOD options. Exiting...";  puts -nonewline "\033\[0m";
             exit 1
         }
     } elseif { $opt(protocol) == "Tetrys" } {
         if { $enabled(codingdepth) == 1 || $enabled(rtx) == 1 } {
-            puts "Not compatible parameters..."
+            puts -nonewline "\033\[1;31m"; puts "Tetrys is not compatible with the CODING_DEPTH and RTX options. Exiting...";  puts -nonewline "\033\[0m";
             exit 1
         }
     } elseif { $opt(protocol) == "Caterpillar" } {
         if { $enabled(codingdepth) == 1 || $enabled(ackperiod) == 1 } {
-            puts "Not compatible parameters..."
+            puts -nonewline "\033\[1;31m"; puts "Caterpillar is not compatible with the CODINGDEPTH and ACK_PERIOD options. Exiting..."; puts -nonewline "\033\[0m";
             exit 1
         }
     } elseif { $opt(protocol) == "CARQ" } {
         if { $enabled(ackperiod) == 1 } {
-            puts "Not compatible parameters..."
+            puts -nonewline "\033\[1;31m"; puts "CARQ is not compatible with the ACK_PERIOD option. Exiting...";  puts -nonewline "\033\[0m";
             exit 1
         }
     }
@@ -143,12 +149,12 @@ for {set i 0} {$i < $argc} {incr i} {
         set ackperiod_per_string [string map {"ms" ""} $opt(ackperiod)]
         set opt(ackperiod) [expr {double($ackperiod_per_string)/1000}]
     }
-    if { $opt(transport) != "FTP" &&  $opt(transport) != "CBR" } {
-            puts "Not a valid transport protocol..."
+    if { $opt(apptype) != "FTP" &&  $opt(apptype) != "CBR" } {
+            puts "Not a valid application type. Exiting..."
             exit 1
     }
-    if { $opt(transport) == "FTP" && $enabled(cbrrate) == 1 } {
-        puts "Not compatible parameters..."
+    if { $opt(apptype) == "FTP" && $enabled(cbrrate) == 1 } {
+        puts "CBR_RATE and FTP are not compatible parameters. Exiting..."
         exit 1
     }
 
@@ -331,7 +337,7 @@ if { $enabled(burstduration) == 0 } {
 $ns link-lossmodel $em $n1 $n3
 set receiver [$ns link-arq $n1 $n3]
 
-if { $opt(transport) == "CBR" } { 
+if { $opt(apptype) == "CBR" } {
     #=== Set up a UDP connection ===
     set udp [new Agent/UDP]
     set sink [new Agent/Null]
@@ -368,7 +374,7 @@ if { $enabled(burstduration) == 1 } {
     $ns at 0.0 "$receiver print-parameters $opt(err) $opt(ackerr) $opt(simtime) $opt(seed)"
 }
 
-if { $opt(transport) == "CBR" } { 
+if { $opt(apptype) == "CBR" } {
     $ns at 0.0 "$cbr start"
     $ns at $opt(simtime) "$cbr stop"
 } else {

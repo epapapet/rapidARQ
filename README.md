@@ -9,6 +9,8 @@ The folder contains:
 
 ## Running a simulation
 
+For a more advanced way to run a simulation please see [*here*](generic.md). If you are not interested, then move on.
+
 ### _C-ARQ_
 
 A simulation with C-ARQ can be executed by using the following syntax:
