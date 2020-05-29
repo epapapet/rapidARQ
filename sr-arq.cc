@@ -559,7 +559,8 @@ int SRARQAcker::command(int argc, const char*const* argv)
           filename = "arq/results/sr-arq_bw.txt";
           break;
         default:
-          filename = new char [strlen(argv[2]) + strlen("arq/results/") + strlen(".txt")];
+          //filename = new char [strlen(argv[2]) + strlen("arq/results/") + strlen(".txt")];
+          filename = new char [256];
           sprintf(filename,"%s%s.txt","arq/results/",argv[2]);
       }
     	return(TCL_OK);
