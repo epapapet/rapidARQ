@@ -301,7 +301,7 @@ if { $enabled(burstduration) == 0 } {
     set vagrng [new RNG]
     set vagrng_back [new RNG]
     $vagrng seed $opt(seed)
-    $vagrng_back seed [expr {$opt(seed) + 100}]
+    $vagrng_back seed [expr {$opt(seed) + 1}]
     set vagranvar [new RandomVariable/Uniform]
     set vagranvar_back [new RandomVariable/Uniform]
     $vagranvar use-rng $vagrng
