@@ -1,160 +1,68 @@
-# codedARQ
+# Running a simulation with the generic script
 
-This is an (under development) implementation of RLNC-enabled ARQ protocols. The implementation works in the context of [_ns2_](https://www.isi.edu/nsnam/ns/). It has been tested for v2.35 of ns2.
+You can use the generic.tcl script to run a simulation for any of the following ARQ protocols:
 
-The folder contains:
-* A Makefile that can be used for incorporating the code into ns2 and compiling it.
-* Files arq.h and arq.cc constitute the implementation's core.
-* A bunch of \*.tcl files used for running example simulations. The available arguments can be found within the tcl file.
+* Selective Repeat (SRARQ)
+* Tetrys (Tetrys)
+* Caterpillar-FB (Caterpillar)
+* C-ARQ (CARQ)
 
-## Running a simulation
-
-For a more advanced way to run a simulation please see [*here*](generic.md). If you are not interested, then move on.
-
-### _C-ARQ_
-
-A simulation with C-ARQ can be executed by using the following syntax:
-
+The following command can be used:
 ```
-./ns arq/<scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <timeout> <simulation_time> <seed> <experiment_id>
+./ns generic.tcl -OPTION1 value1, -OPTION2 value2, -OPTION3 value3, .... 
 ```
 
-where:
+where OPTION1, OPTION2, OPTION3, .... can be one of the following options regardless of the reported order:
 
-* \<scriptfile\> : carq_cbr.tcl, carq_ftp.tcl
-* \<bandwidth\> : in bps, example: set to 5Mbps -> 5M or 5000000
-* \<propagation_delay\> : in secs, example: set to 30ms -> 30ms or 0.03
-* \<window_size\> : arq window size in pkts (0 will automatically set <window_size\> to the optimal value for a error-free channel)
-* \<cbr_rate\> : the rate of the cbr applications, in bps, example: set to 3Mbps -> 3M or 3000000
-* \<pkt_size\> : the size of a UDP pkt (including UDP and IP headers) when UDP is used or the size of a TCP segment (not including the TCP and IP headers) when TCP is used 
-* \<err_rate\> : the error rate in the forward channel (error rate for frames)
-* \<ack_rate\> : the error rate in the return channel (error rate for ACKs)
-* \<num_rtx\> : the number of retransmissions allowed for a native pkt
-* \<rate_k\> : the number of native pkts sent before creating a coded pkt (actually define the code rate)
-* \<coding_depth\> : the number of coding cycles used to create a coded pkt
-* \<timeout\> : the time for expiring a non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v
-* \<simulation_time\> : the simulation time in secs
-* \<seed\> : seed used to produce randomness
-* \<experiment_id\> : an id that determines the filename where simulation's results will be stored. For experiments 1-4, use values 1-4, otherwise results will be saved in a txt file determined by user's value.
+> * -PROTOCOL _\<pr_value\>_: sets the protocol to be used in the simulation, _\<pr_value\>_ can be CARQ, Caterpillar, Tetrys or SRARQ
+> * -BW _\<b_value\>_: sets the bandwidth of the link, _\<b_value\>_ is in bps, example value: 5M or 5000000 sets bandwidth to 5Mbps 
+> * -DELAY _\<d_value\>_: sets the propagation delay, _\<d_value\>_ in in secs, example value: 30ms sets delay to 30ms or 0.03 secs
+> * -WND _\<w_value\>_ : sets the arq window size, _\<w_value\>_ is in pkts
+> * -APP_TYPE _\<appt_value\>_: sets the type of application to be used for generating data, _\<appt_value\>_ is either FTP or CBR
+> * -CBR_RATE _\<cr_value\>_: sets the rate of the cbr applications, _\<cr_value\>_ is in bps, example value: 3M or 3000000 sets the rate to 3Mbps
+> * -PKT_SIZE _\<ps_value\>_: sets the size of pkts, _\<ps_value\>_ is in bytes, if CBR is used _\<ps_value\>_ includes the UDP and IP headers while if FTP is used _\<ps_value\>_ does not include the TCP and IP headers
+> * -ERR _\<e_value\>_: sets the error rate in the forward channel (error rate for frames), 0 <= _\<e_value\>_ < 1
+> * -BURST_DURATION _\<bd_value\>_: 0,..,1 -> the percentage of time that the channel is in an error burst state, usage of this option enables the use of a two-state error channel
+> * -ACK_ERR _\<ae_value\>_: sets the error rate in the return channel (error rate for ACKs), 0 <= _\<ae_value\>_ < 1
+> * -RTX _\<r_value\>_: sets the number of retransmissions allowed for a native packet, _\<r_value\>_ is an integer >= 0
+> * -CODERATE _\<cr_value\>_: sets the number of native packtes sent before creating a coded packet (actually defines the code rate), _\<cr_value\>_ is an integer >= 0, 0 deactivates coding, i.e., no coded packets are created
+> * -CODING_DEPTH _\<cd_value\>_: sets the number of coding cycles used to create a coded packet, _\<cd_value\>_ is an integer \in \[0, floor(_\<w_value\>_/_\<c_value\>_)\], 0 sets the coding window equal to the arq window    
+> * -TIMEOUT _\<t_value\>_: sets the time for expiring an non acked packet, _\<t_value\>_ is in secs, example: 30ms or 0.03 sets the timeout to 30 ms, 0 sets timeout = RTT, a value v<0 will set the timeout = RTT/|v|
+> * -ACK_PERIOD _\<ackp_value\>_: sets the period for sending periodic acks, _\<ackp_value\>_ is in secs, example value: 30ms or 0.03 sets the period to 30 ms, 0 sets ack_period = RTT, a value v<0 will set the ack_period=(window duration)/|v|
+> * -SIMTIME _\<s_time\>_: sets the simulation time, _\<s_time\>_ is in secs
+> * -SEED _\<se_value\>_: sets the seed for controling randomness, _\<se_value\>_ is a postivite integer
+> * -RESULTSFILE _\<res_value\>_: sets the filename for storing results, _\<res_value\>_ is a string, using one of the integers 1-4 as _\<res_value\>_ will result in using a set of predefined file names
+
+Note that:
+
+* options CODERATE CODING_DEPTH and ACK_PERIOD cannot be used with SRARQ
+* options CODING_DEPTH and RTX cannot be used with Tetrys
+* options CODING_DEPTH and ACK_PERIOD cannot be used with Catepillar
+* options ACK_PERIOD cannot be used with CARQ
+
+Finally, note that, for any parameter that is not defined by the user, the script will use a default value. More specifically, the default values are:
+
+> * -PROTOCOL CARQ
+> * -BW 5M 
+> * -DELAY 50ms
+> * -WND 65
+> * -APP_TYPE CBR
+> * -CBR_RATE 5M
+> * -PKT_SIZE 1000
+> * -ERR 0.1
+> * -BURST_DURATION 0.5 (however, by default the two state channel won't be used)
+> * -ACK_ERR 0.1
+> * -RTX 100
+> * -CODERATE 9 (however, this option won't be used with the SRARQ protocol)
+> * -CODING_DEPTH 3 (however, this option will only be used with the CARQ protocol)   
+> * -TIMEOUT 0 (i.e., by default the timeout is set equal to RTT)
+> * -ACK_PERIOD 0 (i.e., by default the ack period is set equal to RTT, note that this option will only be used with the Tetrys protocol)
+> * -SIMTIME 1000
+> * -SEED 1
+> * -RESULTSFILE multiarq
 
 
-\<cbr_rate\> parameter is not available in case *carq_ftp.tcl* is executed.
-
-One can also use:
+For help on how to use the script you can type:
 ```
-./ns arq/carq_cbr_twostate.tcl <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <num_rtx> <rate_k> <coding_depth> <timeout> <simulation_time> <seed> <experiment_id>
+./ns generic.tcl -HELP
 ```
-This script uses a two state on-off error model in the forward channel. One state corresponds to an error-free period while the other to a burst error period. The two extra arguments comnpared to the other scripts are:
-
-* \<err_rate\> : the error rate in the forward channel during the burst period
-* \<burst_duration> : the percentage of time that the channel is in a burst error period
-
-
-### _Caterpillar-FB_
-
-A simulation with Caterpillar-FB can be executed by using the following syntax:
-
-```
-
-./ns arq/<scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <timeout> <simulation_time> <seed> <experiment_id>
-```
-
-where:
-
-* \<scriptfile\> : caterpillar_cbr.tcl or caterpillar_ftp.tcl 
-* \<bandwidth\> : in bps, example: set to 5Mbps -> 5M or 5000000
-* \<propagation_delay\> : in secs, example: set to 30ms -> 30ms or 0.03
-* \<window_size\> : arq window size in pkts (0 will automatically set <window_size\> to the optimal value for a error-free channel)
-* \<cbr_rate\> : the rate of the cbr applications, in bps, example: set to 3Mbps -> 3M or 3000000
-* \<pkt_size\> : the size of a UDP pkt (including UDP and IP headers) when UDP is used or the size of a TCP segment (not including the TCP and IP headers) when TCP is used
-* \<err_rate\> : the error rate in the forward channel (error rate for frames)
-* \<ack_rate\> : the error rate in the return channel (error rate for ACKs)
-* \<num_rtx\> : the number of retransmissions allowed for a native pkt
-* \<rate_k\> : the number of native pkts sent before creating a coded pkt (actually define the code rate)
-* \<timeout\> : the time for expiring a non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v
-* \<simulation_time\> : the simulation time in secs
-* \<seed\> : seed used to produce randomness
-* \<experiment_id\> : an id that determines the filename where simulation's results will be stored. For experiments 1-4, use values 1-4, otherwise results will be saved in a txt file determined by user's value.
-
-
-\<cbr_rate\> parameter is not available in case *caterpillar_ftp.tcl* is executed.
-
-One can also use:
-```
-./ns arq/caterpillar_cbr_twostate.tcl <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <num_rtx> <rate_k> <timeout> <simulation_time> <seed> <experiment_id>
-```
-This script uses a two state on-off error model in the forward channel. One state corresponds to an error-free period while the other to a burst error period. The two extra arguments comnpared to the other scripts are:
-
-* \<err_rate\> : the error rate in the forward channel during the burst period
-* \<burst_duration> : the percentage of time that the channel is in a burst error period
-
-### _Tetrys_
-
-A simulation with Tetrys can be executed by using the following syntax:
-
-```
-./ns arq/<scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <rate_k> <ack_period> <timeout> <simulation_time> <seed> <experiment_id>
-```
-
-where:
-
-* \<scriptfile\> : tetrys_cbr.tcl or tetrys_ftp.tcl 
-* \<bandwidth\> : in bps, example: set to 5Mbps -> 5M or 5000000
-* \<propagation_delay\> : in secs, example: set to 30ms -> 30ms or 0.03
-* \<window_size\> : arq window size in pkts (0 will automatically set <window_size\> to the optimal value for a error-free channel)
-* \<cbr_rate\> : the rate of the cbr applications, in bps, example: set to 3Mbps -> 3M or 3000000
-* \<pkt_size\> : the size of a UDP pkt (including UDP and IP headers) when UDP is used or the size of a TCP segment (not including the TCP and IP headers) when TCP is used
-* \<err_rate\> : the error rate in the forward channel (error rate for frames)
-* \<ack_rate\> : the error rate in the return channel (error rate for ACKs)
-* \<rate_k\> : the number of native pkts sent before creating a coded pkt (actually define the code rate)
-* \<ack_period\> : the period for sending acks, example: set to 30ms->30ms or 0.03, 0 sets ack_period=window duration, a value v<0 will set the ack_period=-(window duration)/v
-* \<timeout\> : the time for expiring an non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v
-* \<simulation_time\> : the simulation time in secs
-* \<seed\> : seed used to produce randomness
-* \<experiment_id\> : an id that determines the filename where simulation's results will be stored. For experiments 1-4, use values 1-4, otherwise results will be saved in a txt file determined by user's value.
-
-\<cbr_rate\> parameter is not available in case *tetrys_ftp.tcl* is executed.
-
-One can also use:
-```
-./ns arq/caterpillar_cbr_twostate.tcl <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <rate_k> <ack_period> <timeout> <simulation_time> <seed>
-```
-This script uses a two state on-off error model in the forward channel. One state corresponds to an error-free period while the other to a burst error period. The two extra arguments comnpared to the other scripts are:
-
-* \<err_rate\> : the error rate in the forward channel during the burst period
-* \<burst_duration> : the percentage of time that the channel is in a burst error period
-
-### _Selective Repeat_
-
-A simulation with Selective Repeat (SR) ARQ can be executed by using the following syntax:
-
-```
-
-./ns arq/<scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <timeout> <simulation_time> <seed> <experiment_id>
-```
-
-where:
-
-* \<scriptfile\> : sr_cbr.tcl or sr_ftp.tcl 
-* \<bandwidth\> : in bps, example: set to 5Mbps -> 5M or 5000000
-* \<propagation_delay\> : in secs, example: set to 30ms -> 30ms or 0.03
-* \<window_size\> : arq window size in pkts (0 will automatically set <window_size\> to the optimal value for a error-free channel)
-* \<cbr_rate\> : the rate of the cbr applications, in bps, example: set to 3Mbps -> 3M or 3000000
-* \<pkt_size\> : the size of a UDP pkt (including UDP and IP headers) when UDP is used or the size of a TCP segment (not including the TCP and IP headers) when TCP is used
-* \<err_rate\> : the error rate in the forward channel (error rate for frames)
-* \<ack_rate\> : the error rate in the return channel (error rate for ACKs)
-* \<num_rtx\> : the number of retransmissions allowed for a native pkt
-* \<timeout\> : the time for expiring a non acked pkt, example: set to 30ms->30ms or 0.03, 0 sets timeout=RTT, a value v<0 will set the timeout=-(RTT)/v
-* \<simulation_time\> : the simulation time in secs
-* \<seed\> : seed used to produce randomness
-* \<experiment_id\> : an id that determines the filename where simulation's results will be stored. For experiments 1-4, use values 1-4, otherwise results will be saved in a txt file determined by user's value.
-
-
-One can also use:
-```
-./ns arq/sr_cbr_twostate.tcl <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <num_rtx> <timeout> <simulation_time> <seed>
-```
-This script uses a two state on-off error model in the forward channel. One state corresponds to an error-free period while the other to a burst error period. The two extra arguments comnpared to the other scripts are:
-
-* \<err_rate\> : the error rate in the forward channel during the burst period
-* \<burst_duration> : the percentage of time that the channel is in a burst error period
