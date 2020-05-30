@@ -178,6 +178,7 @@ $protocolTx set app_pkt_Size_ $opt(pktsize)
 $protocolTx set debug_ NULL
 $protocolAcker set debug_ NULL
 $protocolNAcker set debug_ NULL
+$protocolACKRx set debug_ NULL
 
 SimpleLink instproc link-arq { } {
     $self instvar link_ link_errmodule_ queue_ drophead_ head_
@@ -239,17 +240,17 @@ SimpleLink instproc link-arq { } {
 }
 
 
-SimpleLink instproc link-barq { } {
+SimpleLink instproc link-barq { acker lnk_fwd} {
     $self instvar link_ link_errmodule_ queue_ drophead_ head_
     $self instvar ackreceiver_
-    global opt protocolACKRx
+    global opt protocolACKRx protocolTx
 
     set ackreceiver_ [new $protocolACKRx]
-    puts "Point 1."
-    $ackreceiver_ tagert [$link_errmodule_ target]
-    puts "Point 2."
-    $link_errmodule_ drop-target $ackreceiver_
-    puts "Point 3."
+    set lnk_fwd_queue_ [$lnk_fwd queue]
+    $ackreceiver_ attach-$protocolTx [$lnk_fwd_queue_ target]
+    $ackreceiver_ target [$link_errmodule_ target]
+    $link_errmodule_ target $ackreceiver_
+    $acker attach-oppositeQueue $queue_
     
 }
 
@@ -260,9 +261,10 @@ Simulator instproc link-arq { from to } {
 }
 
 
-Simulator instproc link-barq { from to } {
+Simulator instproc link-barq { from to acker} {
     set link_back [$self link $from $to]
-    $link_back link-barq
+    set link_fwd [$self link $to $from]
+    $link_back link-barq $acker $link_fwd
 }
 
 proc print_stats { } {
@@ -289,7 +291,7 @@ if { $enabled(burstduration) == 0 } {
     set em [new ErrorModel]
     set em_back [new ErrorModel]
     $em set rate_ $opt(err)
-    $em_back set rate_ $opt(err)
+    $em_back set rate_ $opt(ackerr)
     $em set enable_ 1
     $em_back set enable_ 1
     $em unit pkt
@@ -385,7 +387,7 @@ if { $enabled(burstduration) == 0 } {
 $ns link-lossmodel $em $n1 $n3
 $ns link-lossmodel $em_back $n3 $n1
 set receiver [$ns link-arq $n1 $n3]
-$ns link-barq $n3 $n1
+$ns link-barq $n3 $n1 $receiver
 
 if { $opt(apptype) == "CBR" } {
     #=== Set up a UDP connection ===

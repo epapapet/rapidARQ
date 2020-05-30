@@ -658,13 +658,10 @@ void CARQTx::handle(Event* e){
 
 void CARQTx::handle_ack(Packet* p){
 
-  if (HDR_CMN(p)->aomdv_salvage_count_ > 100){ //this is a cumulative ACK
-
+  if (HDR_CMN(p)->opt_num_forwards_ == -10001){ //this is a cumulative ACK
     parse_cumulative_ack(p);
-
   } else { //this is a simple ACK
-
-    parse_ack((HDR_CMN(p)->aomdv_salvage_count_ - 100), false);
+    parse_ack((HDR_CMN(p)->opt_num_forwards_ + 20000), false);
 
   }
 
@@ -916,7 +913,7 @@ void CARQAcker::recv(Packet* p, Handler* h)
     //-----Send ACK----------------//
 
     Packet *ackpkt = create_coded_ack();
-    opposite_queue->enque(ackpkt);
+    opposite_queue->recv(ackpkt,NULL);
     //---------------------------------//
   }
 
@@ -1261,7 +1258,7 @@ bool CARQAcker::decode(Handler* h, bool afterCodedreception){
 
 	//Sent a cumulative ack =======================================//
   Packet *ackpkt = create_coded_ack();
-  opposite_queue->enque(ackpkt);
+  opposite_queue->recv(ackpkt,NULL);
 
 	if (debug) printf("CARQRx, decode: ACK sent.\n");
 	//=============================================================//
@@ -1274,7 +1271,7 @@ Packet* CARQAcker::create_coded_ack(){
 
 	Packet *cpkt = Packet::alloc();
 	hdr_cmn *ch2 = HDR_CMN(cpkt);
-	ch2->opt_num_forwards_ = -10001; //coded packet ACK
+	ch2->opt_num_forwards_ = -10001; //coded ACK packet, simple ACK packets have values >= 20000
 	unsigned char *buffer = new unsigned char[sizeof(int)*((int)(known_packets.size()) + (int)(lost_packets.size()) + 1)]; //4 bytes for each decoded frame plus a byte for the counter
 
 	int cnt_pkts = 0;
@@ -1611,7 +1608,7 @@ void CARQACKRx::recv(Packet* p, Handler* h)
 {
 
 	hdr_cmn *ch = HDR_CMN(p);
-	if(ch->opt_num_forwards_ == -10001){ //coded packet lost, do nothing (but free packet memory)
+	if(ch->opt_num_forwards_ <= -10001){ //coded packet lost, do nothing (but free packet memory)
 		arq_tx_->handle_ack(p); //notify arq_tx_ for the received ack
 	} else {
     send(p, h); //forward pkt to the upper layer
