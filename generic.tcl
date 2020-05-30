@@ -161,6 +161,7 @@ for {set i 0} {$i < $argc} {incr i} {
 set protocolTx "$opt(protocol)Tx"
 set protocolAcker "$opt(protocol)Acker"
 set protocolNAcker "$opt(protocol)Nacker"
+set protocolACKRx "$opt(protocol)ACKRx"
 
 if { $opt(protocol) != "Tertys" } { 
     $protocolTx set retry_limit_ $opt(rtx) 
@@ -178,7 +179,7 @@ $protocolTx set debug_ NULL
 $protocolAcker set debug_ NULL
 $protocolNAcker set debug_ NULL
 
-SimpleLink instproc link-arq {} {
+SimpleLink instproc link-arq { } {
     $self instvar link_ link_errmodule_ queue_ drophead_ head_
     $self instvar tARQ_ acker_ nacker_
     global opt protocolTx protocolAcker protocolNAcker
@@ -203,12 +204,6 @@ SimpleLink instproc link-arq {} {
         $tARQ_ setup-wnd $opt(wnd) $opt(timeout)
     }
 
-    set vagrngn2 [new RNG]
-    $vagrngn2 seed [expr {$opt(seed) + 1}]
-    set vagranvarn2 [new RandomVariable/Uniform]
-    $vagranvarn2 use-rng $vagrngn2
-    $tARQ_ ranvar $vagranvarn2
-    $tARQ_ set-err $opt(ackerr)    
 
     #Acker set up
     $acker_ attach-$protocolTx $tARQ_
@@ -243,10 +238,31 @@ SimpleLink instproc link-arq {} {
 	return $acker_
 }
 
+
+SimpleLink instproc link-barq { } {
+    $self instvar link_ link_errmodule_ queue_ drophead_ head_
+    $self instvar ackreceiver_
+    global opt protocolACKRx
+
+    set ackreceiver_ [new $protocolACKRx]
+    puts "Point 1."
+    $ackreceiver_ tagert [$link_errmodule_ target]
+    puts "Point 2."
+    $link_errmodule_ drop-target $ackreceiver_
+    puts "Point 3."
+    
+}
+
 Simulator instproc link-arq { from to } {
     set link [$self link $from $to]
-    set acker [$link link-arq ]
+    set acker [$link link-arq]
 	return $acker
+}
+
+
+Simulator instproc link-barq { from to } {
+    set link_back [$self link $from $to]
+    $link_back link-barq
 }
 
 proc print_stats { } {
@@ -271,37 +287,66 @@ set window $opt(wnd)
 if { $enabled(burstduration) == 0 } {
     #Create a simple uniform Errormodel
     set em [new ErrorModel]
+    set em_back [new ErrorModel]
     $em set rate_ $opt(err)
+    $em_back set rate_ $opt(err)
     $em set enable_ 1
+    $em_back set enable_ 1
     $em unit pkt
+    $em_back unit pkt
     $em set bandwidth_ $opt(bw)
+    $em_back set bandwidth_ $opt(bw)
     set vagrng [new RNG]
+    set vagrng_back [new RNG]
     $vagrng seed $opt(seed)
+    $vagrng_back seed [expr {$opt(seed) + 100}]
     set vagranvar [new RandomVariable/Uniform]
+    set vagranvar_back [new RandomVariable/Uniform]
     $vagranvar use-rng $vagrng
+    $vagranvar_back use-rng $vagrng_back
     $em ranvar $vagranvar
+    $em_back ranvar $vagranvar_back
     $em drop-target [new Agent/Null]
+    $em_back drop-target [new Agent/Null]
 } else {
     #Create uniform Errormodel representing first state
     set tmp [new ErrorModel]
+    set tmp_back [new ErrorModel]
     $tmp set rate_ 0
+    $tmp_back set rate_ 0
     $tmp set enable_ 1
+    $tmp_back set enable_ 1
     $tmp set bandwidth_ $opt(bw)
+    $tmp_back set bandwidth_ $opt(bw)
     set vagrng00 [new RNG]
+    set vagrng00_back [new RNG]
     $vagrng00 seed [expr {$opt(seed) + 10}]
+    $vagrng00_back seed [expr {$opt(seed) + 110}]
     set vagranvar00 [new RandomVariable/Uniform]
+    set vagranvar00_back [new RandomVariable/Uniform]
     $vagranvar00 use-rng $vagrng00
+    $vagranvar00_back use-rng $vagrng00_back
     $tmp ranvar $vagranvar00
+    $tmp_back ranvar $vagranvar00_back
     #Create uniform Errormodel representing second state
     set tmp1 [new ErrorModel]
+    set tmp1_back [new ErrorModel]
     $tmp1 set rate_ $opt(err)
+    $tmp1_back set rate_ $opt(ackerr)
     $tmp1 set enable_ 1
+    $tmp1_back set enable_ 1
     $tmp1 set bandwidth_ $opt(bw)
+    $tmp1_back set bandwidth_ $opt(bw)
     set vagrng01 [new RNG]
+    set vagrng01_back [new RNG]
     $vagrng01 seed $opt(seed)
+    $vagrng01_back seed [expr {$opt(seed) + 100}]
     set vagranvar01 [new RandomVariable/Uniform]
+    set vagranvar01_back [new RandomVariable/Uniform]
     $vagranvar01 use-rng $vagrng01
-    $tmp ranvar $vagranvar01
+    $vagranvar01_back use-rng $vagrng01_back
+    $tmp1 ranvar $vagranvar01
+    $tmp1_back ranvar $vagranvar01
 
     if {$opt(burstduration) > 1 || $opt(burstduration) < 0} {
         puts "Burst duration percentage should be in \[0, 1\]"
@@ -321,6 +366,7 @@ if { $enabled(burstduration) == 0 } {
 
     # Array of states (error models)
     set m_states [list $tmp $tmp1]
+    set m_states_back [list $tmp_back $tmp1_back]
     # Durations for each of the states, tmp, tmp1 and tmp2, respectively
     set m_periods [list $state1nduration $state2nduration]
     # Transition state model matrix
@@ -330,12 +376,16 @@ if { $enabled(burstduration) == 0 } {
     set m_sttype time
     set m_nstates 2
     set m_nstart [lindex $m_states 0]
+    set m_nstart_back [lindex $m_states_back 0]
     set em [new ErrorModel/MultiState $m_states $m_periods $m_transmx $m_trunit $m_sttype $m_nstates $m_nstart]
+    set em_back [new ErrorModel/MultiState $m_states_back $m_periods $m_transmx $m_trunit $m_sttype $m_nstates $m_nstart_back]
 
 }
 
 $ns link-lossmodel $em $n1 $n3
+$ns link-lossmodel $em_back $n3 $n1
 set receiver [$ns link-arq $n1 $n3]
+$ns link-barq $n3 $n1
 
 if { $opt(apptype) == "CBR" } {
     #=== Set up a UDP connection ===

@@ -1,4 +1,5 @@
 #include "connector.h"
+#include "queue.h"
 #include "ranvar.h"
 #include <set>
 #include <vector>
@@ -10,7 +11,7 @@
 class CARQTx;
 enum CARQStatus {IDLE,SENT,ACKED,RTX,RTXPRE,DROP}; //statuses for packets sent by CARQTx
 enum CARQPacketStatus {NONE,MISSING,RECEIVED,DECODED}; //for CARQAcker, in order to tell apart different types of packets
-enum CARQEventTypes {TIMEOUT,ACK}; //types of events
+enum CARQEventTypes {TIMEOUT}; //types of events
 
 class CARQHandler : public Handler {
 public:
@@ -25,11 +26,6 @@ class CARQEvent : public Event {
    CARQEventTypes type;
    int sn;
    int uid;
-};
-
-class CARQACKEvent : public CARQEvent {
- public:
-   Packet* coded_ack;
 };
 
 class CARQTimeoutEvent : public CARQEvent {
@@ -49,6 +45,7 @@ class CARQTx : public Connector {
   bool parse_nack(int rcv_sn);
 	void resume();
 	virtual void handle(Event* e);
+  void handle_ack(Packet *p);
 	int command(int argc, const char*const* argv);
 	//functions for setting protocol parameters
 	double get_linkdelay() {return lnk_delay_;}
@@ -127,6 +124,7 @@ class CARQRx : public Connector {
 	virtual void recv(Packet*, Handler*) = 0;
  protected:
 	CARQTx* arq_tx_;
+  Queue * opposite_queue;
 
 	double delay_; //delay for returning feedback
 };
@@ -200,4 +198,14 @@ class CARQNacker : public CARQRx {
  protected:
 	CARQAcker* acker;
 	bool debug;
+};
+
+
+class CARQACKRx : public Connector {
+ public:
+	CARQACKRx();
+	int command(int argc, const char*const* argv);
+	void recv(Packet*, Handler*);
+ protected:
+	CARQTx* arq_tx_;
 };
