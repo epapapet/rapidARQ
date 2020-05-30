@@ -5,7 +5,7 @@
 #For each experiment, give the experiment's number (1-4) in order to define filename. For the rest test cases, results will be stored in a carq.txt file.
 
 SIMULATOR_PATH="./ns"
-SIMULATION_FILE="arq/carq_cbr.tcl"
+SIMULATION_FILE="arq/tcl_files/carq_cbr.tcl"
 EXPERIMENT_ID="4"
 
 #Number of iterations
