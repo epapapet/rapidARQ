@@ -119,7 +119,7 @@ set vagrng01 [new RNG]
 $vagrng01 seed [lindex $argv 12]
 set vagranvar01 [new RandomVariable/Uniform]
 $vagranvar01 use-rng $vagrng01
-$tmp ranvar $vagranvar01
+$tmp1 ranvar $vagranvar01
 
 if {[lindex $argv 6] > 1 || [lindex $argv 6] < 0} {
     puts "Burst duration percentage should be in \[0, 1\]"

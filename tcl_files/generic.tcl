@@ -301,7 +301,7 @@ if { $enabled(burstduration) == 0 } {
     $vagrng01 seed $opt(seed)
     set vagranvar01 [new RandomVariable/Uniform]
     $vagranvar01 use-rng $vagrng01
-    $tmp ranvar $vagranvar01
+    $tmp1 ranvar $vagranvar01
 
     if {$opt(burstduration) > 1 || $opt(burstduration) < 0} {
         puts "Burst duration percentage should be in \[0, 1\]"
