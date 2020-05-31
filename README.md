@@ -23,6 +23,7 @@ where OPTION1, OPTION2, OPTION3, .... can be one of the following options regard
 > * -PKT_SIZE _\<ps_value\>_: sets the size of pkts, _\<ps_value\>_ is in bytes, if CBR is used _\<ps_value\>_ includes the UDP and IP headers while if FTP is used _\<ps_value\>_ does not include the TCP and IP headers
 > * -ERR _\<e_value\>_: sets the error rate in the forward channel (error rate for frames), 0 <= _\<e_value\>_ < 1
 > * -BURST_DURATION _\<bd_value\>_: 0,..,1 -> the percentage of time that the channel is in an error burst state, usage of this option enables the use of a two-state error channel
+> * -ACK_BURST_DURATION _\<abd_value\>_: 0,..,1 -> the percentage of time that the backward channel is in an error burst state, usage of this option enables the use of a two-state error channel
 > * -ACK_ERR _\<ae_value\>_: sets the error rate in the return channel (error rate for ACKs), 0 <= _\<ae_value\>_ < 1
 > * -RTX _\<r_value\>_: sets the number of retransmissions allowed for a native packet, _\<r_value\>_ is an integer >= 0
 > * -CODERATE _\<cr_value\>_: sets the number of native packtes sent before creating a coded packet (actually defines the code rate), _\<cr_value\>_ is an integer >= 0, 0 deactivates coding, i.e., no coded packets are created
