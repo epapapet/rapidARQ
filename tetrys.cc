@@ -761,13 +761,15 @@ void TetrysAcker::print_parameters(double err, double ack, double sim_time, int 
   printf("Window (pkts-%sBD-ms-kbits):","%"); printf("\t%d%s%d-", arq_tx_->get_wnd(), "+", addwindow); printf("\033[0;33m"); printf("%.0f%s-", 100.0*8.0*totwind*arq_tx_->get_apppktsize()/(2.0*arq_tx_->get_linkbw() * arq_tx_->get_linkdelay()),"%"); printf("\033[0;36m"); printf("%.2f-", 1.0e3 * 8.0*totwind*arq_tx_->get_apppktsize()/arq_tx_->get_linkbw()); printf("\033[0;36m"); printf("%.0f\n", 1.0e-3*8.0*totwind*arq_tx_->get_apppktsize()); printf("\033[0m");
   printf("\033[0;34m"); printf("Packet size (bytes):"); printf("\t\t%d\n", arq_tx_->get_apppktsize()); printf("\033[0m");
   printf("\033[0;31m");
-  if (err <= 1){
+  if ((err <= 1) && (ack <= 1)){
     printf("Error rate (forward):"); printf("\t\t%.2f\n", err);
+    printf("Error rate (backward):");printf("\t\t%.2f\n", ack);
   } else {
     printf("Burst error rate (forward):");printf("\t%.2f\n", floor(err)/100.0);
-    printf("Burst duration percentage:");printf("\t%.2f\n", err-floor(err));
+    printf("Burst duration %s (forward):", "%");printf("\t%.2f\n", err-floor(err));
+    printf("Burst error rate (backward):");printf("\t%.2f\n", floor(ack)/100.0);
+    printf("Burst duration %s (backward):", "%");printf("\t%.2f\n", ack-floor(ack));
   }
-  printf("Error rate (backward):");printf("\t\t%.2f\n", ack);
   //printf("ACK period (ms-%s wnd duration):","%"); printf("\t%.2f-", 1.0e3 *ack_period); printf("%.0f%s\n", 100.0*arq_tx_->get_linkbw()*ack_period/(double)(8.0*totwind*arq_tx_->get_apppktsize()), "%");
   printf("ACK period (ms-%sRTT):","%"); printf("\t\t%.2f-", 1.0e3 *ack_period); printf("%.0f%s\n", 100.0*ack_period/rtttimecor, "%");
   //printf("Timeout (ms-%sACK period):","%");printf("\t%.2f-", 1.0e3 *arq_tx_->get_timeout());printf("%.0f%s\n", 100.0*arq_tx_->get_timeout()/ack_period,"%"); printf("\033[0m");
@@ -1047,7 +1049,7 @@ Packet* TetrysAcker::create_coded_ack(){
 
 	Packet *cpkt = Packet::alloc();
 	hdr_cmn *ch2 = HDR_CMN(cpkt);
-	ch2->opt_num_forwards_ = -10001; //coded ACK packet, simple ACK packets have values >= -20000 <= and < -10001 
+	ch2->opt_num_forwards_ = -10001; //coded ACK packet, simple ACK packets have values >= -20000 <= and < -10001
 	unsigned char *buffer = new unsigned char[sizeof(int)*((int)(known_packets.size()) + 1)]; //4 bytes for each decoded frame plus a byte for the counter
 
 	int cnt_pkts = 0;

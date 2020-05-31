@@ -9,6 +9,7 @@ set opt(pktsize) 1000
 set opt(err) 0.1
 set opt(burstduration) 0.5
 set opt(ackerr) 0.1
+set opt(ackburstduration) 0.5
 set opt(rtx) 100
 set opt(coderate) 9
 set opt(codingdepth) 3
@@ -28,6 +29,7 @@ set enabled(pktsize) 0
 set enabled(err) 0
 set enabled(burstduration) 0
 set enabled(ackerr) 0
+set enabled(ackburstduration) 0
 set enabled(rtx) 0
 set enabled(coderate) 0
 set enabled(codingdepth) 0
@@ -60,6 +62,8 @@ for {set i 0} {$i < $argc} {incr i} {
         set parameter_index "err"
     } elseif {$argument_prefix == "-BURST_DURATION"} {
         set parameter_index "burstduration"
+    } elseif {$argument_prefix == "-ACK_BURST_DURATION"} {
+        set parameter_index "ackburstduration"
     } elseif {$argument_prefix == "-ACK_ERR"} {
         set parameter_index "ackerr"
     } elseif {$argument_prefix == "-RTX"} {
@@ -89,6 +93,7 @@ for {set i 0} {$i < $argc} {incr i} {
         puts "# -PKT_SIZE <ps_value> : set the size of udp pkt (including UDP and IP headers), <ps_value> in bytes"
         puts "# -ERR <e_value> : set the error rate in the forward channel (error rate for frames), 0 <= <e_value> < 1"
         puts "# -BURST_DURATION <bd_value> : 0,..,1 -> the percentage of time that the channel is in an error burst state, usage enables a two-state error channel"
+        puts "# -ACK_BURST_DURATION <bd_value> : 0,..,1 -> the percentage of time that the backward channel is in an error burst state, usage enables a two-state error channel"
         puts "# -ACK_ERR <ae_value> : set the error rate in the return channel (error rate for ACKs), 0 <= <ae_value> < 1"
         puts "# -RTX <r_value> : set the number of retransmissions allowed for a native pkt, <r_value> is an integer >= 0"
         puts "# -CODERATE <cr_value> : set the number of native pkts sent before creating a coded pkt (actually define the code rate), <cr_value> is an integer >= 0, 0 deactivates coding"
@@ -286,7 +291,7 @@ $ns duplex-link $n1 $n3 $opt(bw) $opt(delay) DropTail
 #=== Create error and ARQ module ===
 set window $opt(wnd)
 
-if { $enabled(burstduration) == 0 } {
+if { $enabled(burstduration) == 0 &&  $enabled(ackburstduration) == 0 } {
     #Create a simple uniform Errormodel
     set em [new ErrorModel]
     set em_back [new ErrorModel]
@@ -354,6 +359,10 @@ if { $enabled(burstduration) == 0 } {
         puts "Burst duration percentage should be in \[0, 1\]"
         exit 1;
     }
+    if {$opt(ackburstduration) > 1 || $opt(ackburstduration) < 0} {
+        puts "Burst duration percentage in the backward channel should be in \[0, 1\]"
+        exit 1;
+    }    
     if {[string first "M" $opt(bw)] != -1} {
         set bwd_per_string [string map {"M" ""} $opt(bw)]
         set bwdcalc [expr {double($bwd_per_string)*1000000}]
@@ -364,13 +373,16 @@ if { $enabled(burstduration) == 0 } {
     set wndduration [expr {8.0*$opt(wnd)*$opt(pktsize)/$bwdcalc}]
     set state1nduration [expr {(1- $opt(burstduration))*$wndduration}]
     set state2nduration [expr {$opt(burstduration)*$wndduration}]
+    set state1nduration_back [expr {(1- $opt(ackburstduration))*$wndduration}]
+    set state2nduration_back [expr {$opt(ackburstduration)*$wndduration}]    
 
 
     # Array of states (error models)
     set m_states [list $tmp $tmp1]
     set m_states_back [list $tmp_back $tmp1_back]
     # Durations for each of the states, tmp, tmp1 and tmp2, respectively
-    set m_periods [list $state1nduration $state2nduration]
+    set m_periods [list $state1nduration $state2nduration_back]
+    set m_periods_back [list $state1nduration $state2nduration_back]
     # Transition state model matrix
     set m_transmx { {0 1} {1 0}}
     set m_trunit pkt
@@ -380,7 +392,7 @@ if { $enabled(burstduration) == 0 } {
     set m_nstart [lindex $m_states 0]
     set m_nstart_back [lindex $m_states_back 0]
     set em [new ErrorModel/MultiState $m_states $m_periods $m_transmx $m_trunit $m_sttype $m_nstates $m_nstart]
-    set em_back [new ErrorModel/MultiState $m_states_back $m_periods $m_transmx $m_trunit $m_sttype $m_nstates $m_nstart_back]
+    set em_back [new ErrorModel/MultiState $m_states_back $m_periods_back $m_transmx $m_trunit $m_sttype $m_nstates $m_nstart_back]
 
 }
 
@@ -420,8 +432,8 @@ if { $opt(apptype) == "CBR" } {
 
 }
 
-if { $enabled(burstduration) == 1 } {
-    $ns at 0.0 "$receiver print-parameters [expr {double(round(100*$opt(err))) + double(round(100*$opt(burstduration)))/100}] $opt(ackerr) $opt(simtime) $opt(seed)"
+if { $enabled(burstduration) == 1 || $enabled(ackburstduration) == 1 } {
+    $ns at 0.0 "$receiver print-parameters [expr {double(round(100*$opt(err))) + double(round(100*$opt(burstduration)))/100}] [expr {double(round(100*$opt(ackerr))) + double(round(100*$opt(ackburstduration)))/100}] $opt(simtime) $opt(seed)"
 } else {
     $ns at 0.0 "$receiver print-parameters $opt(err) $opt(ackerr) $opt(simtime) $opt(seed)"
 }
