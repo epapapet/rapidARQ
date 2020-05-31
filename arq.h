@@ -1,6 +1,6 @@
 #include "connector.h"
 #include "queue.h"
-#include "ranvar.h"
+#include <math.h>
 #include <set>
 #include <vector>
 #include <map>
@@ -94,9 +94,6 @@ class CARQTx : public Connector {
 	double lnk_delay_; //the delay of the link_
 	int app_pkt_Size_; //the size of the pkt created by the app_pkt_Size_
 	double timeout_; //the time used to trigger nack()
-
-  RandomVariable *ranvar_; //a random variable for generating errors in ACK delivery
-	double err_rate; //the rate of errors in ACK delivery
 
 	bool debug;
 

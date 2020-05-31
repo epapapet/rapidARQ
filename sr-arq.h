@@ -1,5 +1,6 @@
 #include "connector.h"
-#include "ranvar.h"
+#include "queue.h"
+#include <math.h>
 #include <set>
 #include <vector>
 #include <map>
@@ -9,7 +10,7 @@
 class SRARQTx;
 enum SRARQARQStatus {IDLE,SENT,ACKED,RTX,RTXPRE,DROP}; //statuses for packets sent by SRARQTx
 enum SRARQPacketStatus {NONE,MISSING,RECEIVED}; //for SRARQAcker, in order to tell apart different types of packets
-enum SRARQEventTypes {TIMEOUT,ACK}; //types of events
+enum SRARQEventTypes {TIMEOUT}; //types of events
 
 class SRARQHandler : public Handler {
 public:
@@ -41,6 +42,7 @@ class SRARQTx : public Connector {
   void parse_nack(int rcv_sn);
 	void resume();
 	virtual void handle(Event* e);
+  void handle_ack(Packet *p);
 	int command(int argc, const char*const* argv);
 	//functions for setting protocol parameters
 	double get_linkdelay() {return lnk_delay_;}
@@ -81,9 +83,6 @@ class SRARQTx : public Connector {
 	int app_pkt_Size_; //the size of the pkt created by the app_pkt_Size_
 	double timeout_; //the time used to trigger nack()
 
-  RandomVariable *ranvar_; //a random variable for generating errors in ACK delivery
-	double err_rate; //the rate of errors in ACK delivery
-
 	bool debug;
 
 	//Statistics
@@ -105,6 +104,7 @@ class SRARQRx : public Connector {
 	virtual void recv(Packet*, Handler*) = 0;
  protected:
 	SRARQTx* arq_tx_;
+  Queue * opposite_queue;
 
 	double delay_; //delay for returning feedback
 };
@@ -155,4 +155,14 @@ class SRARQNacker : public SRARQRx {
  protected:
 	SRARQAcker* acker;
 	bool debug;
+};
+
+
+class SRARQACKRx : public Connector {
+ public:
+	SRARQACKRx();
+	int command(int argc, const char*const* argv);
+	void recv(Packet*, Handler*);
+ protected:
+	SRARQTx* arq_tx_;
 };

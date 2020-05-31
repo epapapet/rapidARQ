@@ -1,5 +1,6 @@
 #include "connector.h"
-#include "ranvar.h"
+#include "queue.h"
+#include <math.h>
 #include <set>
 #include <vector>
 #include <map>
@@ -9,7 +10,7 @@
 class TetrysTx;
 enum TetrysARQStatus {IDLE,SENT,ACKED,DROP}; //statuses for packets sent by TetrysTx
 enum TetrysPacketStatus {NONE,MISSING,RECEIVED,DECODED}; //for TetrysAcker, in order to tell apart different types of packets
-enum TetrysEventTypes {TIMEOUT,ACK, ACKSCHEDULE}; //types of events
+enum TetrysEventTypes {TIMEOUT,ACKSCHEDULE}; //types of events
 
 class TetrysHandler : public Handler {
 public:
@@ -24,11 +25,6 @@ class TetrysEvent : public Event {
    TetrysEventTypes type;
    int sn;
    int uid;
-};
-
-class TetrysACKEvent : public TetrysEvent {
- public:
-   Packet* coded_ack;
 };
 
 class TetrysTimeoutEvent : public TetrysEvent {
@@ -46,6 +42,7 @@ class TetrysTx : public Connector {
   bool parse_ack(int rcv_sn, bool batch);
 	void resume();
 	virtual void handle(Event* e);
+  void handle_ack(Packet *p);
 	int command(int argc, const char*const* argv);
 	//functions for setting protocol parameters
   int get_wnd() {return wnd_;}
@@ -85,9 +82,6 @@ class TetrysTx : public Connector {
 	int app_pkt_Size_; //the size of the pkt created by the app_pkt_Size_
 	double timeout_; //the time used to trigger nack()
 
-  RandomVariable *ranvar_; //a random variable for generating errors in ACK delivery
-	double err_rate; //the rate of errors in ACK delivery
-
 	bool debug;
 
 	//Statistics
@@ -112,6 +106,7 @@ class TetrysRx : public Connector {
 	virtual void recv(Packet*, Handler*) = 0;
  protected:
 	TetrysTx* arq_tx_;
+  Queue * opposite_queue;
 
 	double delay_; //delay for returning feedback
   double ack_period; //the period for sending cumulative ACKs
@@ -187,4 +182,14 @@ class TetrysNacker : public TetrysRx {
  protected:
 	TetrysAcker* acker;
 	bool debug;
+};
+
+
+class TetrysACKRx : public Connector {
+ public:
+	TetrysACKRx();
+	int command(int argc, const char*const* argv);
+	void recv(Packet*, Handler*);
+ protected:
+	TetrysTx* arq_tx_;
 };

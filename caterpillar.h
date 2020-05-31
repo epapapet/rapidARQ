@@ -1,5 +1,6 @@
 #include "connector.h"
-#include "ranvar.h"
+#include "queue.h"
+#include <math.h>
 #include <set>
 #include <vector>
 #include <map>
@@ -9,7 +10,7 @@
 class CaterpillarTx;
 enum CaterpillarARQStatus {IDLE,SENT,ACKED,RTX,RTXPRE,DROP}; //statuses for packets sent by CaterpillarTx
 enum CaterpillarPacketStatus {NONE,MISSING,RECEIVED,DECODED}; //for CaterpillarAcker, in order to tell apart different types of packets
-enum CaterpillarEventTypes {TIMEOUT,ACK}; //types of events
+enum CaterpillarEventTypes {TIMEOUT}; //types of events
 
 class CaterpillarHandler : public Handler {
 public:
@@ -24,11 +25,6 @@ class CaterpillarEvent : public Event {
    CaterpillarEventTypes type;
    int sn;
    int uid;
-};
-
-class CaterpillarACKEvent : public CaterpillarEvent {
- public:
-   Packet* coded_ack;
 };
 
 class CaterpillarTimeoutEvent : public CaterpillarEvent {
@@ -48,6 +44,7 @@ class CaterpillarTx : public Connector {
   bool parse_nack(int rcv_sn);
 	void resume();
 	virtual void handle(Event* e);
+  void handle_ack(Packet *p);
 	int command(int argc, const char*const* argv);
 	//functions for setting protocol parameters
 	double get_linkdelay() {return lnk_delay_;}
@@ -92,9 +89,6 @@ class CaterpillarTx : public Connector {
 	int app_pkt_Size_; //the size of the pkt created by the app_pkt_Size_
 	double timeout_; //the time used to trigger nack()
 
-  RandomVariable *ranvar_; //a random variable for generating errors in ACK delivery
-	double err_rate; //the rate of errors in ACK delivery
-
 	bool debug;
 
 	//Statistics
@@ -121,6 +115,7 @@ class CaterpillarRx : public Connector {
 	virtual void recv(Packet*, Handler*) = 0;
  protected:
 	CaterpillarTx* arq_tx_;
+  Queue * opposite_queue;
 
 	double delay_; //delay for returning feedback
 };
@@ -194,4 +189,14 @@ class CaterpillarNacker : public CaterpillarRx {
  protected:
 	CaterpillarAcker* acker;
 	bool debug;
+};
+
+
+class CaterpillarACKRx : public Connector {
+ public:
+	CaterpillarACKRx();
+	int command(int argc, const char*const* argv);
+	void recv(Packet*, Handler*);
+ protected:
+	CaterpillarTx* arq_tx_;
 };

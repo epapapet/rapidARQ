@@ -25,6 +25,14 @@ static class SRARQNackerClass: public TclClass {
 	}
 } class_SRARQ_nacker;
 
+static class SRARQACKReceiverClass: public TclClass {
+ public:
+	SRARQACKReceiverClass() : TclClass("SRARQACKRx") {}
+	TclObject* create(int, const char*const*) {
+		return (new SRARQACKRx);
+	}
+} class_SRARQ_ackrx;
+
 void SRARQHandler::handle(Event* e)
 {
 	arq_tx_.resume();
@@ -56,9 +64,6 @@ SRARQTx::SRARQTx() : arqh_(*this)
 	bind("app_pkt_Size_", &app_pkt_Size_);
   timeout_ = 0;
 
-  ranvar_ = NULL; // random number generator used for simulating the loss rate for ACKs
-	err_rate = 0.0; // the error rate for ACks
-
 	debug = false; //used to enable printing of diagnostic messages
 
 	start_time = -1; //time when 1st packet arrived at SRARQTx::recv
@@ -71,24 +76,7 @@ SRARQTx::SRARQTx() : arqh_(*this)
 int SRARQTx::command(int argc, const char*const* argv)
 {
 	Tcl& tcl = Tcl::instance();
-  if (argc == 3) {
-    if (strcmp(argv[1], "ranvar") == 0) {
-			ranvar_ = (RandomVariable*) TclObject::lookup(argv[2]);
-			return (TCL_OK);
-		}
-		if (strcmp(argv[1], "set-err") == 0) {
-			if (atof(argv[2]) > 1) {
-				tcl.resultf("Cannot set error more than 1.\n");
-				return(TCL_ERROR);
-			}
-			if (atof(argv[2]) < 0) {
-				tcl.resultf("Cannot set error less than 0.\n");
-				return(TCL_ERROR);
-			}
-			err_rate = atof(argv[2]);
-			return(TCL_OK);
-		}
-  } else if (argc == 4) {
+  if (argc == 4) {
 		if (strcmp(argv[1], "setup-wnd") == 0) {
       wnd_ = atoi(argv[2]);
       if (wnd_ < 0) {
@@ -446,17 +434,17 @@ void SRARQTx::handle(Event* e){
 
     }
 
-  } else if (rcv_type == ACK) { //handle an ack related event
-
-    if ( ranvar_->value() < err_rate ){ //ack is lost, no need to do anything just delete pkt if it is a coded_ack
-      if (debug) printf("Tx, handle: ACK for %d is lost.\n", received_event->sn);
-    } else { //ack is received correctly
-      parse_ack(received_event->sn, received_event->uid);
-    }
-    delete e; //no more needed, delete
-
   }
 } //end of handle
+
+
+void SRARQTx::handle_ack(Packet* p){
+
+  parse_ack((HDR_CMN(p)->opt_num_forwards_ + 20000), HDR_CMN(p)->aomdv_salvage_count_);
+
+  Packet::free(p);
+
+} //end of handle_ack
 //--------------------------------------------------------------------------------------------//
 //--------------------------------------------------------------------------------------------//
 
@@ -488,6 +476,14 @@ int SRARQRx::command(int argc, const char*const* argv)
 				return(TCL_ERROR);
 			}
 			arq_tx_ = (SRARQTx*)TclObject::lookup(argv[2]);
+			return(TCL_OK);
+		}
+    if (strcmp(argv[1], "attach-oppositeQueue") == 0) {
+			if (*argv[2] == '0') {
+				tcl.resultf("Cannot attach NULL queue\n");
+				return(TCL_ERROR);
+			}
+			opposite_queue = (Queue*)TclObject::lookup(argv[2]);
 			return(TCL_OK);
 		}
 	} return Connector::command(argc, argv);
@@ -650,15 +646,12 @@ void SRARQAcker::recv(Packet* p, Handler* h)
 	}
 
 
-  //-----Schedule ACK----------------//
-  SRARQEvent *new_ACKEvent = new SRARQEvent();
-  Event *ack_e;
-  new_ACKEvent->type = ACK;
-  new_ACKEvent->sn = seq_num;
-  new_ACKEvent->uid = pkt_uid;
-  ack_e = (Event *)new_ACKEvent;
-  if (delay_ > 0)
-    Scheduler::instance().schedule(arq_tx_, ack_e, (delay_ + 8.0/arq_tx_->get_linkbw()));
+  //-----Send an ACK----------------//
+  Packet *ackpkt = Packet::alloc();
+  HDR_CMN(ackpkt)->opt_num_forwards_ = -20000 + seq_num; //coded ACK packet, simple ACK packets have values >= -20000 <= and < -10001
+  HDR_CMN(ackpkt)->aomdv_salvage_count_= pkt_uid;
+  HDR_CMN(ackpkt)->size_ = 1; //one byte for the seq_num
+  opposite_queue->recv(ackpkt,NULL);
   //---------------------------------//
 
 } //end of recv
@@ -807,5 +800,46 @@ void SRARQNacker::recv(Packet* p, Handler* h)
   //this is the place to schedule a NACK
 } //end of recv
 
+//--------------------------------------------------------------------------------------------//
+//--------------------------------------------------------------------------------------------//
+
+
+//-----------------------------SRARQACKRx-----------------------------------------------------//
+//--------------------------------------------------------------------------------------------//
+
+SRARQACKRx::SRARQACKRx()
+{
+	arq_tx_=0;
+} //end of constructor
+
+
+int SRARQACKRx::command(int argc, const char*const* argv)
+{
+	Tcl& tcl = Tcl::instance();
+  if (argc == 3) {
+		if (strcmp(argv[1], "attach-SRARQTx") == 0) {
+			if (*argv[2] == '0') {
+				tcl.resultf("Cannot attach NULL SRARQTx\n");
+				return(TCL_ERROR);
+			}
+			arq_tx_ = (SRARQTx*)TclObject::lookup(argv[2]);
+			return(TCL_OK);
+		}
+	} return Connector::command(argc, argv);
+} //end of command
+
+
+
+void SRARQACKRx::recv(Packet* p, Handler* h)
+{
+
+	hdr_cmn *ch = HDR_CMN(p);
+	if(ch->opt_num_forwards_ <= -10001){ //coded packet lost, do nothing (but free packet memory)
+		arq_tx_->handle_ack(p); //notify arq_tx_ for the received ack
+	} else {
+    send(p, h); //forward pkt to the upper layer
+  }
+
+} //end of recv
 //--------------------------------------------------------------------------------------------//
 //--------------------------------------------------------------------------------------------//

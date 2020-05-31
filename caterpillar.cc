@@ -25,6 +25,14 @@ static class CaterpillarNackerClass: public TclClass {
 	}
 } class_caterpillar_nacker;
 
+static class CaterpillarACKReceiverClass: public TclClass {
+ public:
+	CaterpillarACKReceiverClass() : TclClass("CaterpillarACKRx") {}
+	TclObject* create(int, const char*const*) {
+		return (new CaterpillarACKRx);
+	}
+} class_Caterpillar_ackrx;
+
 void CaterpillarHandler::handle(Event* e)
 {
 	arq_tx_.resume();
@@ -58,9 +66,6 @@ CaterpillarTx::CaterpillarTx() : arqh_(*this)
 	bind("app_pkt_Size_", &app_pkt_Size_);
   timeout_ = 0;
 
-  ranvar_ = NULL; // random number generator used for simulating the loss rate for ACKs
-	err_rate = 0.0; // the error rate for ACks
-
 	native_counter = 0; //counter used for invoking the creation of a coded frame
 
 	debug = false; //used to enable printing of diagnostic messages
@@ -76,24 +81,7 @@ CaterpillarTx::CaterpillarTx() : arqh_(*this)
 int CaterpillarTx::command(int argc, const char*const* argv)
 {
 	Tcl& tcl = Tcl::instance();
-  if (argc == 3) {
-    if (strcmp(argv[1], "ranvar") == 0) {
-			ranvar_ = (RandomVariable*) TclObject::lookup(argv[2]);
-			return (TCL_OK);
-		}
-		if (strcmp(argv[1], "set-err") == 0) {
-			if (atof(argv[2]) > 1) {
-				tcl.resultf("Cannot set error more than 1.\n");
-				return(TCL_ERROR);
-			}
-			if (atof(argv[2]) < 0) {
-				tcl.resultf("Cannot set error less than 0.\n");
-				return(TCL_ERROR);
-			}
-			err_rate = atof(argv[2]);
-			return(TCL_OK);
-		}
-  } else if (argc == 5) {
+  if (argc == 5) {
 		if (strcmp(argv[1], "setup-wnd") == 0) {
       wnd_ = atoi(argv[2]);
       if (wnd_ < 0) {
@@ -613,29 +601,22 @@ void CaterpillarTx::handle(Event* e){
 
     }
 
-  } else if (rcv_type == ACK) { //handle an ack related event
-
-    CaterpillarACKEvent *received_aevent = (CaterpillarACKEvent *)e;
-    if ( ranvar_->value() < err_rate ){ //ack is lost, no need to do anything just delete pkt if it is a coded_ack
-      if (received_aevent->coded_ack == NULL){
-        if (debug) printf("Tx, handle: ACK for %d is lost.\n", received_aevent->sn);
-      } else { //this is a coded ack, not expected so ignore and delete
-        if (debug) printf("Tx, handle: Coded ACK is lost.\n");
-  			Packet::free(received_aevent->coded_ack);
-      }
-    } else { //ack is received correctly
-      if (received_aevent->coded_ack == NULL){ //this is a simple ACK
-        parse_ack(received_aevent->sn, false);
-      } else { //this is a cumulative ACK
-        Packet *rcvpkt = (received_aevent->coded_ack)->copy();
-        Packet::free(received_aevent->coded_ack);
-        parse_cumulative_ack(rcvpkt);
-      }
-    }
-    delete e; //no more needed, delete
-
   }
 } //end of handle
+
+
+void CaterpillarTx::handle_ack(Packet* p){
+
+  if (HDR_CMN(p)->opt_num_forwards_ == -10001){ //this is a cumulative ACK
+    parse_cumulative_ack(p);
+  } else { //this is a simple ACK
+    parse_ack((HDR_CMN(p)->opt_num_forwards_ + 20000), false);
+
+  }
+
+  Packet::free(p);
+
+} //end of handle_ack
 //--------------------------------------------------------------------------------------------//
 //--------------------------------------------------------------------------------------------//
 
@@ -667,6 +648,14 @@ int CaterpillarRx::command(int argc, const char*const* argv)
 				return(TCL_ERROR);
 			}
 			arq_tx_ = (CaterpillarTx*)TclObject::lookup(argv[2]);
+			return(TCL_OK);
+		}
+    if (strcmp(argv[1], "attach-oppositeQueue") == 0) {
+			if (*argv[2] == '0') {
+				tcl.resultf("Cannot attach NULL queue\n");
+				return(TCL_ERROR);
+			}
+			opposite_queue = (Queue*)TclObject::lookup(argv[2]);
 			return(TCL_OK);
 		}
 	} return Connector::command(argc, argv);
@@ -777,7 +766,6 @@ void CaterpillarAcker::recv(Packet* p, Handler* h)
 
 	hdr_cmn *ch = HDR_CMN(p);
 	int seq_num = ch->opt_num_forwards_;
-	int pkt_uid = ch->uid();
 
 	int fw_dis = (seq_num - last_fwd_sn_ + sn_cnt)%sn_cnt; //distance of received seq_num from the last delivered frame
 	int fw_width = (most_recent_acked - last_fwd_sn_ + sn_cnt)%sn_cnt; //the active receiver window
@@ -868,16 +856,9 @@ void CaterpillarAcker::recv(Packet* p, Handler* h)
   }
 
   if (!decoding_occured){ //no need to send new ack since the decode process sent one
-    //-----Schedule ACK----------------//
-    CaterpillarACKEvent *new_ACKEvent = new CaterpillarACKEvent();
-    Event *ack_e;
-    new_ACKEvent->type = ACK;
-    new_ACKEvent->sn = seq_num;
-    new_ACKEvent->uid = pkt_uid;
-    new_ACKEvent->coded_ack = create_coded_ack();
-    ack_e = (Event *)new_ACKEvent;
-    if (delay_ > 0)
-      Scheduler::instance().schedule(arq_tx_, ack_e, (delay_ + 8.0*HDR_CMN(new_ACKEvent->coded_ack)->size_/arq_tx_->get_linkbw()));
+    //-----Send an ACK-----------------//
+    Packet *ackpkt = create_coded_ack();
+    opposite_queue->recv(ackpkt,NULL);
     //---------------------------------//
   }
 
@@ -1213,15 +1194,8 @@ bool CaterpillarAcker::decode(Handler* h, bool afterCodedreception){
   } //end if decoding_is_possible
 
 	//Sent a cumulative ack =======================================//
-	Event *ack_e;
-	CaterpillarACKEvent *new_ACKEvent = new CaterpillarACKEvent();
-  new_ACKEvent->type = ACK;
-	new_ACKEvent->sn = -1;
-	new_ACKEvent->uid = -1;
-	new_ACKEvent->coded_ack = create_coded_ack();
-	ack_e = (Event *)new_ACKEvent;
-	if (delay_ > 0)
-		Scheduler::instance().schedule(arq_tx_, ack_e, (delay_ + 8*HDR_CMN(new_ACKEvent->coded_ack)->size_ /arq_tx_->get_linkbw()));
+  Packet *ackpkt = create_coded_ack();
+  opposite_queue->recv(ackpkt,NULL);
 
 	if (debug) printf("CaterpillarRx, decode: ACK sent.\n");
 	//=============================================================//
@@ -1234,7 +1208,7 @@ Packet* CaterpillarAcker::create_coded_ack(){
 
 	Packet *cpkt = Packet::alloc();
 	hdr_cmn *ch2 = HDR_CMN(cpkt);
-	ch2->opt_num_forwards_ = -10001; //coded packet ACK
+	ch2->opt_num_forwards_ = -10001; //coded ACK packet, simple ACK packets have values >= -20000 <= and < -10001 
 	unsigned char *buffer = new unsigned char[sizeof(int)*((int)(known_packets.size()) + (int)(lost_packets.size()) + 1)]; //4 bytes for each decoded frame plus a byte for the counter
 
 	int cnt_pkts = 0;
@@ -1537,5 +1511,47 @@ void CaterpillarNacker::recv(Packet* p, Handler* h)
 
 } //end of recv
 
+//--------------------------------------------------------------------------------------------//
+//--------------------------------------------------------------------------------------------//
+
+
+
+//-----------------------------CaterpillarACKRx-----------------------------------------------//
+//--------------------------------------------------------------------------------------------//
+
+CaterpillarACKRx::CaterpillarACKRx()
+{
+	arq_tx_=0;
+} //end of constructor
+
+
+int CaterpillarACKRx::command(int argc, const char*const* argv)
+{
+	Tcl& tcl = Tcl::instance();
+  if (argc == 3) {
+		if (strcmp(argv[1], "attach-CaterpillarTx") == 0) {
+			if (*argv[2] == '0') {
+				tcl.resultf("Cannot attach NULL CaterpillarTx\n");
+				return(TCL_ERROR);
+			}
+			arq_tx_ = (CaterpillarTx*)TclObject::lookup(argv[2]);
+			return(TCL_OK);
+		}
+	} return Connector::command(argc, argv);
+} //end of command
+
+
+
+void CaterpillarACKRx::recv(Packet* p, Handler* h)
+{
+
+	hdr_cmn *ch = HDR_CMN(p);
+	if(ch->opt_num_forwards_ <= -10001){ //coded packet lost, do nothing (but free packet memory)
+		arq_tx_->handle_ack(p); //notify arq_tx_ for the received ack
+	} else {
+    send(p, h); //forward pkt to the upper layer
+  }
+
+} //end of recv
 //--------------------------------------------------------------------------------------------//
 //--------------------------------------------------------------------------------------------//

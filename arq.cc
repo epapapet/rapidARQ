@@ -1271,7 +1271,7 @@ Packet* CARQAcker::create_coded_ack(){
 
 	Packet *cpkt = Packet::alloc();
 	hdr_cmn *ch2 = HDR_CMN(cpkt);
-	ch2->opt_num_forwards_ = -10001; //coded ACK packet, simple ACK packets have values >= 20000
+	ch2->opt_num_forwards_ = -10001; //coded ACK packet, simple ACK packets have values >= -20000 <= and < -10001 
 	unsigned char *buffer = new unsigned char[sizeof(int)*((int)(known_packets.size()) + (int)(lost_packets.size()) + 1)]; //4 bytes for each decoded frame plus a byte for the counter
 
 	int cnt_pkts = 0;
