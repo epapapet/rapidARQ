@@ -130,7 +130,8 @@ int CARQTx::command(int argc, const char*const* argv)
       //double minimum_rtt_time = 2*lnk_delay_ + 8.0*(app_pkt_Size_ + 1)/lnk_bw_;
       double rtt_time = 2*lnk_delay_ + 8.0*(app_pkt_Size_ + max_ack_size)/lnk_bw_;
       double minimum_rtt_time = rtt_time;
-      if (timeout_ == 0){ timeout_ = rtt_time; }
+      if (timeout_ == 0){ timeout_ = rtt_time + 0.000000000001; }
+      if (fabs(timeout_ - rtt_time) <= DBL_EPSILON) { timeout_ = timeout_ + 0.000000000001; }
       if (timeout_ < 0) { timeout_ = -(1.0/timeout_)*rtt_time; }
       if (timeout_ < minimum_rtt_time) {
         tcl.resultf("Timeout is too small.\n");
@@ -1557,7 +1558,11 @@ void CARQAcker::log_lost_pkt(Packet *p){
 			Packet::free (p);
 		}
 	} else {
-		if (ch->opt_num_forwards_ >= 0) lost_pkt_buf[seq_num] = p; //store only if this is a native pkt because otherwise the native pkt has already been delivered to the upper layer
+		if (ch->opt_num_forwards_ >= 0) {
+      lost_pkt_buf[seq_num] = p; //store only if this is a native pkt because otherwise the native pkt has already been delivered to the upper layer
+    } else {
+      Packet::free(p);
+    }
 	}
 
 } // end of log_lost_pkt

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <string.h>
 #include <unistd.h>
+#include "float.h"
 
 class CARQTx;
 enum CARQStatus {IDLE,SENT,ACKED,RTX,RTXPRE,DROP}; //statuses for packets sent by CARQTx

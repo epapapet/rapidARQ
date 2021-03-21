@@ -5,6 +5,7 @@
 #include <map>
 #include <algorithm>
 #include <unistd.h>
+#include "float.h"
 
 class SRARQTx;
 enum SRARQARQStatus {IDLE,SENT,ACKED,RTX,RTXPRE,DROP}; //statuses for packets sent by SRARQTx

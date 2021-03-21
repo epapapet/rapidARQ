@@ -108,7 +108,8 @@ int SRARQTx::command(int argc, const char*const* argv)
       for(int i=0; i<sn_cnt; i++){ timeout_events[i] = NULL; }
       timeout_ = atof(argv[3]);
       double rtt_time = 2*lnk_delay_ + 8.0*(app_pkt_Size_ + 1)/lnk_bw_;
-      if (timeout_ == 0){ timeout_ = rtt_time; }
+      if (timeout_ == 0){ timeout_ = rtt_time + 0.000000000001; }
+      if (fabs(timeout_ - rtt_time) <= DBL_EPSILON) { timeout_ = timeout_ + 0.000000000001; }
       if (timeout_ < 0) { timeout_ = -(1.0/timeout_)*rtt_time; }
       if (timeout_ < rtt_time) {
         tcl.resultf("Timeout is too small.\n");
@@ -632,6 +633,7 @@ void SRARQAcker::recv(Packet* p, Handler* h)
 		}
 
 	} else if (within_bww && !within_fww) {//frame belongs to the backward window (i.e., SRARQTx's active window), so it is a retransmitted frame due to loss of ACK
+    Packet::free(p);
 		//ignore the packet and acknowledge
 	} else { //frame is not in the forward and not in the backward window
 		//This happens when one or more frames are dropped by SRARQTx (when exceeding the retrans limit) so it moves on to transmit new frames.
@@ -804,6 +806,7 @@ int SRARQNacker::command(int argc, const char*const* argv)
 
 void SRARQNacker::recv(Packet* p, Handler* h)
 {
+  Packet::free(p);
   //this is the place to schedule a NACK
 } //end of recv
 
