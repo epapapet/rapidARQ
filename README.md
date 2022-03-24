@@ -1,4 +1,4 @@
-# codedARQ
+# rapidARQ
 
 This is an (under development) implementation of RLNC-enabled ARQ protocols. The implementation works in the context of [_ns2_](https://www.isi.edu/nsnam/ns/). It has been tested for v2.35 of ns2.
 
@@ -11,9 +11,9 @@ The folder contains:
 
 For a more advanced way to run a simulation please see [*here*](generic.md). If you are not interested, then move on.
 
-### _C-ARQ_
+### _rapid-ARQ_
 
-A simulation with C-ARQ can be executed by using the following syntax:
+A simulation with rapid-ARQ can be executed by using the following syntax:
 
 ```
 ./ns arq/<scriptfile> <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <ack_rate> <num_rtx> <rate_k> <coding_depth> <timeout> <simulation_time> <seed> <experiment_id>
