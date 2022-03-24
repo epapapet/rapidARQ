@@ -1,6 +1,6 @@
 # rapidARQ
 
-This is an (under development) implementation of RLNC-enabled ARQ protocols. The implementation works in the context of [_ns2_](https://www.isi.edu/nsnam/ns/). It has been tested for v2.35 of ns2.
+This is an implementation of RLNC-enabled ARQ protocols. The implementation works in the context of [_ns2_](https://www.isi.edu/nsnam/ns/). It has been tested for v2.35 of ns2.
 
 The folder contains:
 * A Makefile that can be used for incorporating the code into ns2 and compiling it.
@@ -117,7 +117,7 @@ where:
 
 One can also use:
 ```
-./ns arq/caterpillar_cbr_twostate.tcl <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <rate_k> <ack_period> <timeout> <simulation_time> <seed>
+./ns arq/tetrys_cbr_twostate.tcl <bandwidth> <propagation_delay> <window_size> <cbr_rate> <pkt_size> <err_rate> <burst_duration> <ack_rate> <rate_k> <ack_period> <timeout> <simulation_time> <seed>
 ```
 This script uses a two state on-off error model in the forward channel. One state corresponds to an error-free period while the other to a burst error period. The two extra arguments comnpared to the other scripts are:
 

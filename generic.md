@@ -5,7 +5,7 @@ You can use the generic.tcl script to run a simulation for any of the following 
 * Selective Repeat (SRARQ)
 * Tetrys (Tetrys)
 * Caterpillar-FB (Caterpillar)
-* C-ARQ (CARQ)
+* rapidARQ (CARQ)
 
 The following command can be used:
 ```
@@ -35,10 +35,10 @@ where OPTION1, OPTION2, OPTION3, .... can be one of the following options regard
 
 Note that:
 
-* options CODERATE CODING_DEPTH and ACK_PERIOD cannot be used with SRARQ
+* options CODERATE, CODING_DEPTH and ACK_PERIOD cannot be used with SRARQ
 * options CODING_DEPTH and RTX cannot be used with Tetrys
 * options CODING_DEPTH and ACK_PERIOD cannot be used with Catepillar
-* options ACK_PERIOD cannot be used with CARQ
+* options ACK_PERIOD cannot be used with rapidARQ
 
 Finally, note that, for any parameter that is not defined by the user, the script will use a default value. More specifically, the default values are:
 
